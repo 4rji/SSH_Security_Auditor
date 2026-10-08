@@ -1,0 +1,30 @@
+[Unit]
+Description=SSH Security Auditor (interno)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sshauditor
+Group=sshauditor
+WorkingDirectory=/opt/ssh-auditor
+Environment=SSH_AUDITOR_CONFIG=/etc/ssh-auditor/config.yaml
+ExecStart=/opt/ssh-auditor/.venv/bin/python -m ssh_auditor
+Restart=on-failure
+RestartSec=2
+
+# Endurecimiento
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryMax=1G
+# El servicio no escribe en disco; no necesita ReadWritePaths.
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SSH Security Auditor</title>
+  <style>
+    :root { --fg:#1f2328; --mut:#57606a; --bd:#d0d7de; --bg:#ffffff; --pan:#f6f8fa;
+            --pass:#1a7f37; --warn:#9a6700; --fail:#cf222e; --info:#0969da; --skip:#57606a; }
+    * { box-sizing:border-box; }
+    body { font-family:system-ui,-apple-system,sans-serif; margin:0; color:var(--fg);
+           background:var(--bg); line-height:1.5; }
+    header { background:var(--pan); border-bottom:1px solid var(--bd); padding:1rem 1.5rem; }
+    header h1 { margin:0; font-size:1.25rem; }
+    header a { color:var(--info); text-decoration:none; font-size:.85rem; margin-left:1rem; }
+    main { max-width:960px; margin:0 auto; padding:1.5rem; }
+    .step { border:1px solid var(--bd); border-radius:8px; margin-bottom:1rem; }
+    .step > summary { cursor:pointer; padding:.75rem 1rem; font-weight:600; background:var(--pan);
+                      border-radius:8px; list-style:none; }
+    .step[open] > summary { border-bottom:1px solid var(--bd); border-radius:8px 8px 0 0; }
+    .step > div { padding:1rem; }
+    label { display:block; font-size:.85rem; color:var(--mut); margin:.5rem 0 .2rem; }
+    input, select { width:100%; padding:.45rem .6rem; border:1px solid var(--bd); border-radius:6px;
+                    font-size:.9rem; }
+    .row { display:grid; grid-template-columns:1fr 1fr; gap:.75rem; }
+    .tests { display:grid; grid-template-columns:1fr; gap:.4rem; }
+    .tests label { display:flex; align-items:center; gap:.5rem; color:var(--fg); margin:0;
+                   font-size:.9rem; }
+    .tests input { width:auto; }
+    button { background:#1f6feb; color:#fff; border:0; border-radius:6px; padding:.55rem 1rem;
+             font-size:.9rem; cursor:pointer; }
+    button.sec { background:#eaeef2; color:var(--fg); }
+    button:disabled { opacity:.5; cursor:not-allowed; }
+    .bar { display:flex; gap:.5rem; flex-wrap:wrap; margin:1rem 0; }
+    .muted { color:var(--mut); font-size:.85rem; }
+    table { border-collapse:collapse; width:100%; margin-top:.5rem; }
+    th,td { border:1px solid var(--bd); padding:.4rem .6rem; text-align:left; font-size:.85rem;
+            vertical-align:top; }
+    th { background:var(--pan); }
+    .st { font-weight:700; }
+    .PASS{color:var(--pass)} .WARN{color:var(--warn)} .FAIL{color:var(--fail)}
+    .ERROR{color:var(--fail)} .INFO{color:var(--info)} .SKIP{color:var(--skip)}
+    #log { font-family:ui-monospace,monospace; font-size:.8rem; background:var(--pan);
+           border:1px solid var(--bd); border-radius:6px; padding:.5rem; max-height:150px;
+           overflow:auto; white-space:pre-wrap; }
+    .pill { display:inline-block; padding:.1rem .5rem; border-radius:999px; font-size:.75rem;
+            background:var(--pan); border:1px solid var(--bd); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>SSH Security Auditor
+      <a href="/claude.html">Conectar con Claude</a>
+    </h1>
+  </header>
+  <main>
+    <details class="step" open>
+      <summary>Paso 1 · Objetivo</summary>
+      <div>
+        <div class="row">
+          <div><label>Nombre / identificador</label><input id="name" placeholder="om-lab-01"></div>
+          <div><label>IP o FQDN</label><input id="host" placeholder="10.0.0.5"></div>
+        </div>
+        <div class="row">
+          <div><label>Puerto SSH</label><input id="port" type="number" value="22"></div>
+          <div><label>Perfil de dispositivo</label><select id="profile"></select></div>
+        </div>
+      </div>
+    </details>
+
+    <details class="step">
+      <summary>Paso 2 · Credenciales</summary>
+      <div>
+        <p class="muted">En la Fase 1 solo se ejecutan pruebas sin autenticar (negociación e
+        inventario de red). El login llega en la Fase 3; aquí aparecerá el botón
+        <strong>Guardar</strong> para recordar la contraseña en este navegador.</p>
+      </div>
+    </details>
+
+    <details class="step" open>
+      <summary>Paso 3 · Pruebas</summary>
+      <div>
+        <div class="bar">
+          <label style="margin:0"><input type="checkbox" id="selall"> Seleccionar todo</label>
+          <span class="pill">Política: <select id="policy" style="width:auto;border:0;background:transparent"></select></span>
+        </div>
+        <div class="tests" id="tests"></div>
+      </div>
+    </details>
+
+    <details class="step" open>
+      <summary>Paso 4 · Ejecución y resultados</summary>
+      <div>
+        <div class="bar">
+          <button id="run">Ejecutar análisis</button>
+          <button class="sec" id="exportJson" disabled>Exportar JSON</button>
+          <button class="sec" id="exportHtml" disabled>Exportar HTML</button>
+          <button class="sec" id="exportCsv" disabled>Exportar CSV</button>
+        </div>
+        <div id="status" class="muted"></div>
+        <div id="log" hidden></div>
+        <div id="results"></div>
+        <hr style="margin:1.5rem 0;border:0;border-top:1px solid var(--bd)">
+        <h3 style="font-size:1rem">Comparar con una exportación</h3>
+        <p class="muted">Carga un JSON exportado antes y se compara con el análisis actual.</p>
+        <div class="bar">
+          <input type="file" id="cmpFile" accept="application/json" style="width:auto">
+          <button class="sec" id="cmpBtn" disabled>Comparar</button>
+        </div>
+        <div id="compare"></div>
+      </div>
+    </details>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>

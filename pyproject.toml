@@ -1,0 +1,24 @@
+[project]
+name = "ssh-auditor"
+version = "0.1.0"
+description = "SSH Security Auditor — herramienta interna de auditoría SSH"
+requires-python = ">=3.13"
+dependencies = [
+    "asyncssh>=2.24",
+    "fastapi>=0.142",
+    "uvicorn[standard]>=0.54",
+    "pydantic>=2.13",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=9", "pytest-asyncio>=1.4", "httpx>=0.28"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "strict"
+testpaths = ["tests"]
+pythonpath = ["."]
+python_classes = ["*Tests"]
+
+[tool.setuptools.packages.find]
+include = ["ssh_auditor*"]
