@@ -1,8 +1,0 @@
-id: opengear-om
-nombre: Opengear OM
-shell: linux
-comando_inocuo: id
-limites:
-  conexiones_max: 50
-  concurrencia_max: 4
-politica: opengear-base

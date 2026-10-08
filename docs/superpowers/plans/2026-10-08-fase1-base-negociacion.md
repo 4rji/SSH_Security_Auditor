@@ -49,7 +49,7 @@
 - `ssh_auditor/config.py` — carga `config.yaml`, perfiles y políticas; allowlist.
 - `ssh_auditor/web/app.py` — rutas FastAPI, SSE, estáticos.
 - `ssh_auditor/web/static/{index.html,app.js,claude.html}` — UI.
-- `config/config.example.yaml`, `config/policies/opengear-base.yaml`, `config/profiles/opengear-om.yaml`.
+- `config/config.example.yaml`, `config/policies/base.yaml`, `config/profiles/generico.yaml`.
 - `deploy/ssh-auditor.service`, `deploy/install.sh`.
 - `tests/conftest.py` — servidor SSH asyncssh en proceso como fixture.
 - `tests/...` — un archivo por módulo.
@@ -945,7 +945,7 @@ def to_html(sr: ScanResult) -> str:
 ### Task 10: Config, allowlist y carga de políticas
 
 **Files:**
-- Create: `ssh_auditor/config.py`, `config/config.example.yaml`, `config/policies/opengear-base.yaml`, `config/profiles/opengear-om.yaml`
+- Create: `ssh_auditor/config.py`, `config/config.example.yaml`, `config/policies/base.yaml`, `config/profiles/generico.yaml`
 - Test: `tests/test_config.py`
 
 **Interfaces:**
@@ -1037,9 +1037,9 @@ policies_dir: config/policies
 profiles_dir: config/profiles
 ```
 
-`config/policies/opengear-base.yaml`:
+`config/policies/base.yaml`:
 ```yaml
-nombre: opengear-base
+nombre: base
 kex:
   prohibidos: [diffie-hellman-group1-sha1, diffie-hellman-group14-sha1]
   requerido_pq: mlkem768x25519-sha256   # ausencia => WARN
@@ -1049,16 +1049,16 @@ host_key:
   prohibidos: [ssh-rsa, ssh-dss]
 ```
 
-`config/profiles/opengear-om.yaml`:
+`config/profiles/generico.yaml`:
 ```yaml
-id: opengear-om
-nombre: Opengear OM
+id: generico
+nombre: Genérico
 shell: linux
 comando_inocuo: id
 limites:
   conexiones_max: 50
   concurrencia_max: 4
-politica: opengear-base
+politica: base
 ```
 
 - [ ] **Step 4: Run** → PASS.
@@ -1268,7 +1268,7 @@ async def test_tests_catalog_and_scan_and_export(ssh_server):
         r = await c.get("/api/v1/tests")
         assert r.status_code == 200 and any(t["id"] == "negotiation" for t in r.json())
         r = await c.post("/api/v1/scans", json={"target_host": host, "port": port,
-            "tests": ["connectivity", "negotiation"], "policy": "opengear-base"})
+            "tests": ["connectivity", "negotiation"], "policy": "base"})
         assert r.status_code == 200
         sid = r.json()["scan_id"]
         r = await c.get(f"/api/v1/scans/{sid}/export?format=csv")
@@ -1281,7 +1281,7 @@ async def test_scan_denied_outside_allowlist():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://t") as c:
         r = await c.post("/api/v1/scans", json={"target_host": "192.168.1.1",
-            "tests": ["connectivity"], "policy": "opengear-base"})
+            "tests": ["connectivity"], "policy": "base"})
         assert r.status_code == 403
 ```
 

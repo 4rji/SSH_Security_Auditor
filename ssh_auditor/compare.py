@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from ssh_auditor.models import ScanResult, Status
+from collections import Counter
+
+from ssh_auditor.models import ScanResult, Status, TestResult
 
 _RANK = {
     Status.FAIL: 0, Status.ERROR: 0, Status.WARN: 1,
@@ -17,9 +19,72 @@ def _change(sa: Status, sb: Status) -> str:
     return "Igual"
 
 
-def _list_diff(la, lb) -> dict:
-    sa, sb = set(la or []), set(lb or [])
-    return {"added": sorted(sb - sa), "removed": sorted(sa - sb)}
+def _is_num(x) -> bool:
+    return isinstance(x, (int, float)) and not isinstance(x, bool)
+
+
+def _field_diff(field: str, va, vb) -> dict:
+    """Diferencia de un campo de evidencia según su forma: lista, mapa o valor."""
+    if isinstance(va, list) or isinstance(vb, list):
+        la, lb = va or [], vb or []
+        sa, sb = set(la), set(lb)
+        return {
+            "field": field, "kind": "list", "before": la, "after": lb,
+            # En el orden del servidor: el orden de KEXINIT es su preferencia.
+            "added": [x for x in lb if x not in sa],
+            "removed": [x for x in la if x not in sb],
+            "reordered": sa == sb and la != lb,
+            "changed": la != lb,
+        }
+    if isinstance(va, dict) or isinstance(vb, dict):
+        da, db = va or {}, vb or {}
+        items = []
+        for k in dict.fromkeys([*da, *db]):
+            if k in da and k in db:
+                change = "Igual" if da[k] == db[k] else "Cambió"
+            elif k in db:
+                change = "Nueva"
+            else:
+                change = "Desaparecida"
+            items.append({"key": k, "before": da.get(k), "after": db.get(k), "change": change})
+        return {"field": field, "kind": "map", "items": items, "changed": da != db}
+    out = {"field": field, "kind": "value", "before": va, "after": vb, "changed": va != vb}
+    if _is_num(va) and _is_num(vb):
+        out["delta"] = vb - va
+    return out
+
+
+def _findings(ta: TestResult | None, tb: TestResult | None) -> list[dict]:
+    fa = {f.id: f for f in (ta.findings if ta else [])}
+    fb = {f.id: f for f in (tb.findings if tb else [])}
+    out = []
+    for fid in dict.fromkeys([*fb, *fa]):
+        a, b = fa.get(fid), fb.get(fid)
+        if a and b:
+            change = _change(a.status, b.status)
+            if change == "Igual" and a.summary != b.summary:
+                change = "Cambió"
+        elif b:
+            change = "Nuevo"
+        else:
+            change = "Desaparecido"
+        out.append({
+            "id": fid, "change": change,
+            "status_a": a.status.value if a else None,
+            "status_b": b.status.value if b else None,
+            "summary_a": a.summary if a else None,
+            "summary_b": b.summary if b else None,
+            "recommendation": b.recommendation if b else "",
+        })
+    return out
+
+
+def _meta(sr: ScanResult) -> dict:
+    return {
+        "scan_id": sr.scan_id, "target_host": sr.target_host, "port": sr.port,
+        "profile": sr.profile, "policy_name": sr.policy_name,
+        "started_at": sr.started_at.isoformat(), "tool_version": sr.tool_version,
+    }
 
 
 def compare(a: ScanResult, b: ScanResult) -> dict:
@@ -39,28 +104,37 @@ def compare(a: ScanResult, b: ScanResult) -> dict:
             "test_id": tid, "change": change,
             "status_a": sa.value if sa else None,
             "status_b": sb.value if sb else None,
+            "findings": _findings(ra.get(tid), rb.get(tid)),
         })
 
     evidence_diff = {}
-    for tid in set(ra) & set(rb):
+    for tid in sorted(set(ra) & set(rb)):
         da, db = ra[tid].evidence.data, rb[tid].evidence.data
-        entry: dict = {}
-        for field in ("kex", "server_host_key", "enc_s2c", "mac_s2c"):
-            if field in da or field in db:
-                entry[field] = _list_diff(da.get(field), db.get(field))
         fa = da.get("host_key_fingerprints") or {}
         fb = db.get("host_key_fingerprints") or {}
-        entry["host_key_changed"] = bool(fa) and bool(fb) and fa != fb
-        evidence_diff[tid] = entry
+        evidence_diff[tid] = {
+            "fields": [_field_diff(f, da.get(f), db.get(f)) for f in dict.fromkeys([*db, *da])],
+            "host_key_changed": bool(fa) and bool(fb) and fa != fb,
+        }
 
     warnings = []
     if a.tool_version != b.tool_version:
         warnings.append(f"Versión de herramienta distinta: {a.tool_version} vs {b.tool_version}")
-    for tid in set(ra) & set(rb):
+    if a.policy_name != b.policy_name:
+        warnings.append(f"Política distinta: {a.policy_name} vs {b.policy_name}")
+    for tid in sorted(set(ra) & set(rb)):
         if ra[tid].test_version != rb[tid].test_version:
             warnings.append(
                 f"Versión del plugin '{tid}' distinta: "
                 f"{ra[tid].test_version} vs {rb[tid].test_version}"
             )
 
-    return {"tests": tests, "evidence_diff": evidence_diff, "warnings": warnings}
+    summary = {
+        "tests": dict(Counter(t["change"] for t in tests)),
+        "findings": dict(Counter(f["change"] for t in tests for f in t["findings"])),
+    }
+    return {
+        "meta": {"a": _meta(a), "b": _meta(b)},
+        "summary": summary, "tests": tests,
+        "evidence_diff": evidence_diff, "warnings": warnings,
+    }

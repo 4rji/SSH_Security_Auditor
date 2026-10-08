@@ -4,7 +4,7 @@
 
 ## 1. Objetivo
 
-Crear una herramienta web interna para que los ingenieros validen de forma controlada la seguridad y el comportamiento SSH de equipos Opengear, routers y otros dispositivos de red.
+Crear una herramienta web interna para que los ingenieros validen de forma controlada la seguridad y el comportamiento SSH de routers y otros dispositivos de red.
 
 Los equipos se flashean con frecuencia. El foco está en obtener resultados reproducibles y **comparables entre ejecuciones**: entre versiones de firmware, entre modelos o contra una exportación de referencia.
 
@@ -49,7 +49,7 @@ La página escuchará en el puerto `7284` (configurable). Navegación principal:
 - Nombre o identificador del equipo.
 - IP o FQDN.
 - Puerto SSH, con valor inicial `22`.
-- Perfil de dispositivo (ver §5), por ejemplo `opengear-om`, `opengear-cm` o `router-generico`.
+- Perfil de dispositivo (ver §5), por ejemplo `generico`.
 - Modelo, firmware y etiquetas libres. Si el perfil sabe detectarlos después del login, se rellenan solos.
 
 Antes de ejecutar se hará una validación ligera de DNS, alcance TCP y tiempo de conexión. Un error aquí bloqueará únicamente las pruebas que dependan de ese servicio.
@@ -236,8 +236,8 @@ Todo se define en archivos YAML en `/etc/ssh-auditor/`, con ejemplos versionados
 Ejemplo de perfil de dispositivo:
 
 ```yaml
-id: opengear-om
-nombre: Opengear OM
+id: generico
+nombre: Genérico
 shell: linux
 comando_inocuo: id
 deteccion:
@@ -245,7 +245,7 @@ deteccion:
 limites:
   conexiones_max: 50
   concurrencia_max: 4
-politica: opengear-base
+politica: base
 ```
 
 ## 6. Comparación de resultados
@@ -322,7 +322,7 @@ Disponible en `http://<servidor>:7284/claude`, con la dirección del servidor ya
   ```
 
 - **Claude Desktop:** descarga de un archivo `.mcpb` (MCP Bundle) generado por el servidor, que se instala con doble clic. Contiene un pequeño puente stdio → HTTP en Node con la URL del servidor como valor por defecto en `user_config`. Hace falta porque los conectores remotos personalizados se conectan desde la infraestructura de Anthropic y no alcanzan un servidor de la red interna. Verificar este punto en la Fase 2.
-- Ejemplos de uso, por ejemplo: "audita la negociación SSH de 10.0.0.5 con el perfil opengear-om y compárala con el análisis anterior".
+- Ejemplos de uso, por ejemplo: "audita la negociación SSH de 10.0.0.5 con el perfil generico y compárala con el análisis anterior".
 
 ## 9. Arquitectura e instalación
 
@@ -448,7 +448,7 @@ Este contrato podrá reutilizarse para las demás herramientas cuando exista el 
 ### Fase 1
 
 - Se instala como servicio systemd y responde en el puerto 7284.
-- Muestra KEX, host keys con fingerprint, cifrados, MACs y métodos de autenticación anunciados de un Opengear real.
+- Muestra KEX, host keys con fingerprint, cifrados, MACs y métodos de autenticación anunciados de un equipo real.
 - Detecta Terrapin y la ausencia de intercambio de claves post-cuántico en un `sshd` de laboratorio vulnerable.
 - Exporta JSON y HTML, reimporta el JSON y compara dos ejecuciones mostrando algoritmos añadidos o eliminados y cambio de host key.
 - Rechaza objetivos fuera de la allowlist.

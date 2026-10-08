@@ -1,6 +1,6 @@
 # SSH Security Auditor
 
-Herramienta interna para auditar la postura SSH de equipos Opengear, routers y otros
+Herramienta interna para auditar la postura SSH de routers y otros
 dispositivos de red: negociación (algoritmos, host keys, Terrapin, KEX post-cuántico),
 y —en fases siguientes— autenticación, configuración efectiva de `sshd`, yescrypt y
 concurrencia. Sin estado en servidor: los resultados viven en el navegador y en las

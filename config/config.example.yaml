@@ -3,7 +3,7 @@ listen_port: 7284
 # Allowlist obligatoria: vacío = se rechaza cualquier objetivo.
 # Ajustar a la(s) red(es) de laboratorio autorizadas.
 allow_networks:
-  - 10.0.0.0/24
+  - 0.0.0.0/0
 cache_ttl_s: 86400
 policies_dir: config/policies
 profiles_dir: config/profiles

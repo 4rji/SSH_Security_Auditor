@@ -1,6 +1,6 @@
 id: generico
-nombre: Genérico
-shell: linux
+nombre: Copy
+shell: linux_2
 comando_inocuo: id
 limites:
   conexiones_max: 20

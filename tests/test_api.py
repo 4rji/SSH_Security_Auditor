@@ -22,7 +22,7 @@ async def test_tests_catalog_and_scan_and_export(ssh_server):
         assert r.status_code == 200 and any(t["id"] == "negotiation" for t in r.json())
         r = await c.post("/api/v1/scans", json={
             "target_host": host, "port": port,
-            "tests": ["connectivity", "negotiation"], "policy": "opengear-base",
+            "tests": ["connectivity", "negotiation"], "policy": "base",
         })
         assert r.status_code == 200
         sid = r.json()["scan_id"]
@@ -36,7 +36,7 @@ async def test_scan_denied_outside_allowlist():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://t") as c:
         r = await c.post("/api/v1/scans", json={
-            "target_host": "192.168.1.1", "tests": ["connectivity"], "policy": "opengear-base",
+            "target_host": "192.168.1.1", "tests": ["connectivity"], "policy": "base",
         })
         assert r.status_code == 403
 

@@ -5,7 +5,57 @@ from dataclasses import dataclass
 
 SSH_MSG_KEXINIT = 20
 STRICT_KEX_MARKER = "kex-strict-s-v00@openssh.com"
-PQ_KEX = {"mlkem768x25519-sha256", "sntrup761x25519-sha512"}
+PQ_KEX_PREFIXES = ("mlkem", "sntrup")
+AEAD_CIPHERS_SUFFIXES = ("-gcm@openssh.com", "chacha20-poly1305@openssh.com")
+
+# Preferencias por defecto de un cliente OpenSSH 10.0 (`ssh -G`): sirven para calcular
+# qué negociaría un cliente moderno, sin abrir más conexiones.
+REFERENCE_CLIENT = {
+    "kex": [
+        "mlkem768x25519-sha256", "sntrup761x25519-sha512",
+        "sntrup761x25519-sha512@openssh.com", "curve25519-sha256",
+        "curve25519-sha256@libssh.org", "ecdh-sha2-nistp256", "ecdh-sha2-nistp384",
+        "ecdh-sha2-nistp521", "diffie-hellman-group-exchange-sha256",
+        "diffie-hellman-group16-sha512", "diffie-hellman-group18-sha512",
+        "diffie-hellman-group14-sha256",
+    ],
+    "host_key": [
+        "ssh-ed25519", "ecdsa-sha2-nistp256", "ecdsa-sha2-nistp384", "ecdsa-sha2-nistp521",
+        "sk-ssh-ed25519@openssh.com", "sk-ecdsa-sha2-nistp256@openssh.com",
+        "rsa-sha2-512", "rsa-sha2-256",
+    ],
+    "cipher": [
+        "chacha20-poly1305@openssh.com", "aes128-gcm@openssh.com", "aes256-gcm@openssh.com",
+        "aes128-ctr", "aes192-ctr", "aes256-ctr",
+    ],
+    "mac": [
+        "umac-64-etm@openssh.com", "umac-128-etm@openssh.com", "hmac-sha2-256-etm@openssh.com",
+        "hmac-sha2-512-etm@openssh.com", "hmac-sha1-etm@openssh.com", "umac-64@openssh.com",
+        "umac-128@openssh.com", "hmac-sha2-256", "hmac-sha2-512", "hmac-sha1",
+    ],
+}
+
+# Cliente restringido a algoritmos aprobados por NIST (orientativo: que se negocien no
+# demuestra un módulo FIPS 140-3 validado).
+FIPS_CLIENT = {
+    "kex": [
+        "ecdh-sha2-nistp256", "ecdh-sha2-nistp384", "ecdh-sha2-nistp521",
+        "diffie-hellman-group16-sha512", "diffie-hellman-group18-sha512",
+        "diffie-hellman-group14-sha256",
+    ],
+    "host_key": [
+        "rsa-sha2-512", "rsa-sha2-256", "ecdsa-sha2-nistp256", "ecdsa-sha2-nistp384",
+        "ecdsa-sha2-nistp521",
+    ],
+    "cipher": [
+        "aes256-gcm@openssh.com", "aes128-gcm@openssh.com", "aes256-ctr", "aes192-ctr",
+        "aes128-ctr",
+    ],
+    "mac": [
+        "hmac-sha2-512-etm@openssh.com", "hmac-sha2-256-etm@openssh.com", "hmac-sha2-512",
+        "hmac-sha2-256",
+    ],
+}
 
 
 class KexInitError(Exception):
@@ -64,8 +114,36 @@ def parse_kexinit(payload: bytes) -> KexInit:
     )
 
 
+def pq_kex_algs(k: KexInit) -> list[str]:
+    return [a for a in k.kex if a.startswith(PQ_KEX_PREFIXES)]
+
+
 def has_pq_kex(k: KexInit) -> bool:
-    return any(a in PQ_KEX for a in k.kex)
+    return bool(pq_kex_algs(k))
+
+
+def is_aead(cipher: str) -> bool:
+    return cipher.endswith(AEAD_CIPHERS_SUFFIXES)
+
+
+def negotiate(client: dict[str, list[str]], k: KexInit) -> dict[str, str | None]:
+    """Algoritmos que elegiría `client` (RFC 4253 §7.1: el primero del cliente que el
+    servidor también ofrece). None = no hay ninguno en común. Con un cifrado AEAD el
+    MAC va implícito y se devuelve como "implícito (AEAD)"."""
+    def pick(mine: list[str], theirs: list[str]) -> str | None:
+        return next((a for a in mine if a in theirs), None)
+
+    cipher = pick(client["cipher"], k.enc_s2c)
+    if cipher and is_aead(cipher):
+        mac = "implícito (AEAD)"
+    else:
+        mac = pick(client["mac"], k.mac_s2c)
+    return {
+        "kex": pick(client["kex"], k.kex),
+        "host_key": pick(client["host_key"], k.server_host_key),
+        "cipher": cipher,
+        "mac": mac,
+    }
 
 
 def is_terrapin_vulnerable(k: KexInit) -> bool:

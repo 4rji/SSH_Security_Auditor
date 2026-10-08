@@ -1,4 +1,7 @@
-from ssh_auditor.kexinit import KexInit, has_pq_kex, is_terrapin_vulnerable
+from ssh_auditor.kexinit import (
+    FIPS_CLIENT, REFERENCE_CLIENT, KexInit, has_pq_kex, is_terrapin_vulnerable, negotiate,
+    pq_kex_algs,
+)
 
 
 def _k(kex, enc, mac):
@@ -35,3 +38,26 @@ def test_terrapin_safe_gcm_only():
 def test_pq_kex_detected():
     assert has_pq_kex(_k(["mlkem768x25519-sha256"], ["aes256-gcm@openssh.com"], [])) is True
     assert has_pq_kex(_k(["curve25519-sha256"], ["aes256-gcm@openssh.com"], [])) is False
+
+
+def test_pq_kex_algs_lists_all_hybrids():
+    k = _k(["sntrup761x25519-sha512@openssh.com", "curve25519-sha256", "mlkem768x25519-sha256"],
+           ["aes256-gcm@openssh.com"], [])
+    assert pq_kex_algs(k) == ["sntrup761x25519-sha512@openssh.com", "mlkem768x25519-sha256"]
+
+
+def test_negotiate_picks_first_client_preference_and_implicit_mac():
+    k = _k(["diffie-hellman-group14-sha256", "curve25519-sha256"],
+           ["aes256-ctr", "aes256-gcm@openssh.com"], ["hmac-sha2-256"])
+    n = negotiate(REFERENCE_CLIENT, k)
+    assert n["kex"] == "curve25519-sha256"
+    assert n["host_key"] == "ssh-ed25519"
+    assert n["cipher"] == "aes256-gcm@openssh.com"
+    assert n["mac"] == "implícito (AEAD)"
+
+
+def test_negotiate_reports_missing_common_algorithm():
+    k = _k(["curve25519-sha256"], ["chacha20-poly1305@openssh.com"], ["umac-64-etm@openssh.com"])
+    n = negotiate(FIPS_CLIENT, k)
+    assert n["kex"] is None and n["host_key"] is None and n["cipher"] is None
+    assert n["mac"] is None

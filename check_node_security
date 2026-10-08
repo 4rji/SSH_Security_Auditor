@@ -1,0 +1,792 @@
+#!/usr/bin/env bash
+
+# Read-only remote security snapshot for a Lighthouse node.
+# Usage: ./check_node_security.sh [--all] [host] [timeout_seconds]
+#   --all  also show every command executed and the full algorithm lists.
+#
+# This script performs unauthenticated, non-destructive network checks only.
+
+set -uo pipefail
+export LC_ALL=C
+
+SHOW_ALL=0
+POSITIONAL=()
+for arg in "$@"; do
+  case "$arg" in
+    --all) SHOW_ALL=1 ;;
+    *)     POSITIONAL+=("$arg") ;;
+  esac
+done
+
+TARGET="${POSITIONAL[0]:-10.0.84.19}"
+CONNECT_TIMEOUT="${POSITIONAL[1]:-5}"
+
+if [[ "$TARGET" == -* || ! "$TARGET" =~ ^[A-Za-z0-9.-]+$ ]]; then
+  printf 'Error: invalid IPv4 address or hostname: %s\n' "$TARGET" >&2
+  exit 2
+fi
+
+if [[ ! "$CONNECT_TIMEOUT" =~ ^[1-9][0-9]*$ ]] || (( CONNECT_TIMEOUT > 60 )); then
+  printf 'Error: timeout must be an integer between 1 and 60 seconds.\n' >&2
+  exit 2
+fi
+
+TLS_TIMEOUT=$((CONNECT_TIMEOUT * 2))
+
+for required_command in curl openssl ssh awk sed grep tr paste mktemp timeout date; do
+  if ! command -v "$required_command" >/dev/null 2>&1; then
+    printf 'Error: required command is missing: %s\n' "$required_command" >&2
+    exit 3
+  fi
+done
+
+# Color is enabled on interactive terminals. FORCE_COLOR=1 overrides terminal
+# detection, while NO_COLOR disables it according to the NO_COLOR convention.
+if [[ -z "${NO_COLOR:-}" && ( -t 1 || "${FORCE_COLOR:-0}" == '1' ) ]]; then
+  RED=$'\033[1;91m'
+  GREEN=$'\033[1;92m'
+  YELLOW=$'\033[1;93m'
+  BLUE=$'\033[1;38;5;33m'
+  ORANGE=$'\033[1;38;5;208m'
+  WHITE=$'\033[1;97m'
+  TEXT=$'\033[97m'
+  BOLD=$'\033[1m'
+  DIM=$'\033[2m'
+  RESET=$'\033[0m'
+else
+  RED=''
+  GREEN=''
+  YELLOW=''
+  BLUE=''
+  ORANGE=''
+  WHITE=''
+  TEXT=''
+  BOLD=''
+  DIM=''
+  RESET=''
+fi
+
+WORK_DIR="$(mktemp -d /tmp/lighthouse-node-check.XXXXXX)" || exit 3
+HEADERS_FILE="$WORK_DIR/headers"
+BODY_FILE="$WORK_DIR/body"
+CORS_HEADERS_FILE="$WORK_DIR/cors-headers"
+TRACE_HEADERS_FILE="$WORK_DIR/trace-headers"
+TRACE_BODY_FILE="$WORK_DIR/trace-body"
+OPTIONS_HEADERS_FILE="$WORK_DIR/options-headers"
+TLS_FILE="$WORK_DIR/tls"
+TLS_PROBE_FILE="$WORK_DIR/tls-probe"
+CERT_FILE="$WORK_DIR/certificate.pem"
+CERT_TEXT_FILE="$WORK_DIR/certificate.txt"
+SSH_FILE="$WORK_DIR/ssh-debug"
+SSH_KEYS_FILE="$WORK_DIR/ssh-keys"
+FIPS_TLS_FILE="$WORK_DIR/fips-tls"
+FIPS_SSH_FILE="$WORK_DIR/fips-ssh"
+
+cleanup() {
+  rm -f -- \
+    "$HEADERS_FILE" "$BODY_FILE" "$CORS_HEADERS_FILE" \
+    "$TRACE_HEADERS_FILE" "$TRACE_BODY_FILE" "$OPTIONS_HEADERS_FILE" \
+    "$TLS_FILE" "$TLS_PROBE_FILE" "$CERT_FILE" "$CERT_TEXT_FILE" \
+    "$SSH_FILE" "$SSH_KEYS_FILE" "$FIPS_TLS_FILE" "$FIPS_SSH_FILE"
+  rmdir -- "$WORK_DIR" 2>/dev/null || true
+}
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+section() {
+  printf '\n%s╔═ %s%s\n' "$ORANGE" "$1" "$RESET"
+}
+
+# Command echo is verbose output: only shown with --all.
+show_command() {
+  (( SHOW_ALL )) || return 0
+  local argument
+  printf '  %sCommand:%s' "$ORANGE" "$RESET"
+  for argument in "$@"; do
+    printf ' %s%q%s' "$BLUE" "$argument" "$RESET"
+  done
+  printf '\n'
+}
+
+show_command_stdin() {
+  (( SHOW_ALL )) || return 0
+  show_command "$@"
+  printf '  %sstdin:%s %s/dev/null%s\n' "$ORANGE" "$RESET" "$BLUE" "$RESET"
+}
+
+show_command_line() {
+  (( SHOW_ALL )) || return 0
+  printf '  %sCommand:%s %s%s%s\n' "$ORANGE" "$RESET" "$BLUE" "$1" "$RESET"
+}
+
+show_manual_command() {
+  (( SHOW_ALL )) || return 0
+  printf '  %sOn-node follow-up (not executed):%s %s%s%s\n' \
+    "$ORANGE" "$RESET" "$BLUE" "$1" "$RESET"
+}
+
+field() {
+  local label="$1"
+  local value="${2:-}"
+  if [[ -n "$value" ]]; then
+    printf '  %s%-27s%s %s%s%s\n' "$ORANGE" "$label" "$RESET" "$BLUE" "$value" "$RESET"
+  else
+    printf '  %s%-27s%s %snot available%s\n' "$ORANGE" "$label" "$RESET" "$YELLOW" "$RESET"
+  fi
+}
+
+pass() {
+  printf '  %s[PASS]%s %s%s%s\n' "$GREEN" "$RESET" "$TEXT" "$1" "$RESET"
+}
+
+warn() {
+  printf '  %s[WARN]%s %s%s%s\n' "$YELLOW" "$RESET" "$TEXT" "$1" "$RESET"
+}
+
+fail() {
+  printf '  %s[FAIL]%s %s%s%s\n' "$RED" "$RESET" "$TEXT" "$1" "$RESET"
+}
+
+info() {
+  printf '  %s[INFO]%s %s%s%s\n' "$BLUE" "$RESET" "$TEXT" "$1" "$RESET"
+}
+
+header_value() {
+  local header_name="$1"
+  local source_file="$2"
+  awk -v wanted="$header_name" '
+    BEGIN {prefix=tolower(wanted) ":"}
+    {
+      line=$0
+      sub(/\r$/, "", line)
+      if (index(tolower(line), prefix) == 1) {
+        sub(/^[^:]+:[[:space:]]*/, "", line)
+        print line
+        exit
+      }
+    }
+  ' "$source_file"
+}
+
+header_count() {
+  local header_name="$1"
+  local source_file="$2"
+  awk -v wanted="$header_name" '
+    BEGIN {prefix=tolower(wanted) ":"; count=0}
+    {
+      line=$0
+      sub(/\r$/, "", line)
+      if (index(tolower(line), prefix) == 1) count++
+    }
+    END {print count}
+  ' "$source_file"
+}
+
+PORT_STATE=''
+PORT_DETAIL=''
+probe_port() {
+  local port="$1"
+  local result rc
+
+  if command -v nc >/dev/null 2>&1; then
+    result="$(nc -vz -w "$CONNECT_TIMEOUT" "$TARGET" "$port" 2>&1)"
+    rc=$?
+    if (( rc == 0 )); then
+      PORT_STATE='open'
+      PORT_DETAIL='open/responding'
+    elif grep -Eqi 'refused|rejected' <<<"$result"; then
+      PORT_STATE='closed'
+      PORT_DETAIL='closed (connection refused)'
+    else
+      PORT_STATE='unknown'
+      PORT_DETAIL='filtered, blocked locally, or not responding'
+    fi
+    return
+  fi
+
+  if timeout "$CONNECT_TIMEOUT" bash -c 'exec 3<>"/dev/tcp/$1/$2"' _ "$TARGET" "$port" 2>/dev/null; then
+    PORT_STATE='open'
+    PORT_DETAIL='open/responding'
+  else
+    PORT_STATE='unknown'
+    PORT_DETAIL='closed, filtered, blocked locally, or not responding'
+  fi
+}
+
+# Initialize values used by the final snapshot.
+http_status=''
+http_protocol=''
+csp=''
+tls_protocol=''
+tls_cipher=''
+tls_group=''
+cert_fingerprint=''
+spki_pin=''
+common_name=''
+ssh_version=''
+ssh_fingerprint=''
+negotiated_kex=''
+negotiated_hostkey=''
+negotiated_transport=''
+fips_tls_result='not tested'
+fips_ssh_result='not tested'
+
+printf '%s╔══════════════════════════════════════════════════════════════╗%s\n' "$ORANGE" "$RESET"
+printf '%s║%s              LIGHTHOUSE REMOTE SECURITY AUDIT              %s║%s\n' "$ORANGE" "$WHITE" "$ORANGE" "$RESET"
+printf '%s╚══════════════════════════════════════════════════════════════╝%s\n' "$ORANGE" "$RESET"
+field 'Target' "$TARGET"
+field 'UTC date' "$(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+field 'Mode' 'Unauthenticated / read-only'
+
+section 'TCP Exposure'
+for port in 22 80 443 8443; do
+  if command -v nc >/dev/null 2>&1; then
+    show_command nc -vz -w "$CONNECT_TIMEOUT" "$TARGET" "$port"
+  else
+    show_command timeout "$CONNECT_TIMEOUT" bash -c 'exec 3<>"/dev/tcp/$1/$2"' _ "$TARGET" "$port"
+  fi
+
+  probe_port "$port"
+  case "$PORT_STATE" in
+    open)   printf '  %s[OPEN]%s Port %s: %s\n' "$GREEN" "$RESET" "$port" "$PORT_DETAIL" ;;
+    closed) printf '  %s[CLOSED]%s Port %s: %s\n' "$BLUE" "$RESET" "$port" "$PORT_DETAIL" ;;
+    *)      printf '  %s[UNKNOWN]%s Port %s: %s\n' "$YELLOW" "$RESET" "$port" "$PORT_DETAIL" ;;
+  esac
+done
+
+section 'HTTPS, HTTP Version, and Security Headers'
+HTTPS_CMD=(
+  curl -k -sS
+  --connect-timeout "$CONNECT_TIMEOUT"
+  --max-time "$((CONNECT_TIMEOUT * 3))"
+  -D "$HEADERS_FILE"
+  -o "$BODY_FILE"
+  -w '%{http_code}'
+  "https://$TARGET/"
+)
+show_command "${HTTPS_CMD[@]}"
+http_status="$("${HTTPS_CMD[@]}")"
+https_rc=$?
+
+if (( https_rc == 0 )); then
+  http_protocol="$(awk '/^HTTP\// {gsub(/\r$/, ""); print $1; exit}' "$HEADERS_FILE")"
+  csp="$(header_value 'Content-Security-Policy' "$HEADERS_FILE")"
+  hsts="$(header_value 'Strict-Transport-Security' "$HEADERS_FILE")"
+  xcto="$(header_value 'X-Content-Type-Options' "$HEADERS_FILE")"
+  xfo="$(header_value 'X-Frame-Options' "$HEADERS_FILE")"
+  referrer="$(header_value 'Referrer-Policy' "$HEADERS_FILE")"
+  permissions_policy="$(header_value 'Permissions-Policy' "$HEADERS_FILE")"
+  server_header="$(header_value 'Server' "$HEADERS_FILE")"
+  powered_by="$(header_value 'X-Powered-By' "$HEADERS_FILE")"
+
+  field 'HTTP status' "$http_status"
+  field 'HTTP protocol' "$http_protocol"
+  field 'CSP' "$csp"
+  field 'HSTS' "$hsts"
+  field 'X-Content-Type-Options' "$xcto"
+  field 'X-Frame-Options' "$xfo"
+  field 'Referrer-Policy' "$referrer"
+  field 'Permissions-Policy' "$permissions_policy"
+
+  script_src="$(tr ';' '\n' <<<"$csp" | sed -n '/^[[:space:]]*script-src[[:space:]]/{s/^[[:space:]]*//;s/[[:space:]]*$//;p;q;}')"
+  if [[ "$script_src" == "script-src 'self'" ]]; then
+    pass "CSP script policy is restricted to 'self'."
+  elif [[ -n "$script_src" ]]; then
+    warn "CSP has a script-src directive, but it is not limited to 'self': $script_src"
+  else
+    fail 'CSP does not define script-src.'
+  fi
+
+  if [[ "$hsts" == *'max-age='* ]]; then
+    pass 'HSTS is enabled.'
+  else
+    fail 'HSTS is missing or malformed.'
+  fi
+
+  hsts_count="$(header_count 'Strict-Transport-Security' "$HEADERS_FILE")"
+  if (( hsts_count > 1 )); then
+    warn "HSTS is emitted $hsts_count times; consolidate duplicate policy headers."
+  fi
+
+  [[ "${xcto,,}" == 'nosniff' ]] && pass 'MIME sniffing protection is enabled.' || warn 'X-Content-Type-Options: nosniff was not observed.'
+  [[ -n "$xfo" ]] && pass "Clickjacking header observed: $xfo" || warn 'X-Frame-Options was not observed.'
+  [[ -n "$referrer" ]] && pass "Referrer policy observed: $referrer" || warn 'Referrer-Policy was not observed.'
+  [[ -n "$permissions_policy" ]] || info 'Permissions-Policy was not observed; review whether one is appropriate.'
+  [[ -n "$server_header" ]] && warn "Server banner disclosed: $server_header" || pass 'No Server banner was disclosed.'
+  [[ -n "$powered_by" ]] && warn "Technology banner disclosed: $powered_by" || pass 'No X-Powered-By banner was disclosed.'
+
+  while IFS= read -r cookie_line; do
+    cookie_name="${cookie_line%%=*}"
+    if [[ "$cookie_line" == *';'* ]]; then
+      cookie_flags="${cookie_line#*;}"
+    else
+      cookie_flags='no cookie attributes'
+    fi
+    field "Cookie: $cookie_name" "$cookie_flags"
+    if [[ "${cookie_name,,}" == 'token' && "${cookie_flags,,}" != *'httponly'* ]]; then
+      warn 'Authentication token cookie is not marked HttpOnly.'
+    fi
+  done < <(awk '
+    tolower($0) ~ /^set-cookie:/ {
+      line=$0
+      sub(/\r$/, "", line)
+      sub(/^[^:]+:[[:space:]]*/, "", line)
+      print line
+    }
+  ' "$HEADERS_FILE")
+else
+  fail 'Unable to retrieve the HTTPS response.'
+fi
+
+section 'CORS Policy'
+CORS_CMD=(
+  curl -k -sS
+  --connect-timeout "$CONNECT_TIMEOUT"
+  --max-time "$((CONNECT_TIMEOUT * 3))"
+  -H 'Origin: https://audit.invalid'
+  -D "$CORS_HEADERS_FILE"
+  -o /dev/null
+  -w '%{http_code}'
+  "https://$TARGET/"
+)
+show_command "${CORS_CMD[@]}"
+cors_status="$("${CORS_CMD[@]}")"
+cors_rc=$?
+if (( cors_rc == 0 )); then
+  acao="$(header_value 'Access-Control-Allow-Origin' "$CORS_HEADERS_FILE")"
+  acac="$(header_value 'Access-Control-Allow-Credentials' "$CORS_HEADERS_FILE")"
+  field 'HTTP status' "$cors_status"
+  field 'Allow-Origin' "$acao"
+  field 'Allow-Credentials' "$acac"
+  if [[ -z "$acao" ]]; then
+    pass 'No cross-origin access was granted to the untrusted Origin.'
+  elif [[ "${acac,,}" == 'true' && ( "$acao" == '*' || "$acao" == 'https://audit.invalid' ) ]]; then
+    fail 'Credentialed cross-origin access appears overly permissive.'
+  elif [[ "$acao" == '*' || "$acao" == 'https://audit.invalid' ]]; then
+    warn "Cross-origin access was granted to: $acao"
+  else
+    info "CORS returned a constrained origin: $acao"
+  fi
+else
+  warn 'CORS probe could not complete.'
+fi
+
+section 'HTTP Method Handling'
+TRACE_CMD=(
+  curl -k -sS
+  --connect-timeout "$CONNECT_TIMEOUT"
+  --max-time "$((CONNECT_TIMEOUT * 3))"
+  -X TRACE
+  -H 'X-Audit-Marker: lighthouse-security-check'
+  -D "$TRACE_HEADERS_FILE"
+  -o "$TRACE_BODY_FILE"
+  -w '%{http_code}'
+  "https://$TARGET/"
+)
+show_command "${TRACE_CMD[@]}"
+trace_status="$("${TRACE_CMD[@]}")"
+trace_rc=$?
+field 'TRACE status' "$trace_status"
+if (( trace_rc != 0 )); then
+  warn 'TRACE probe could not complete.'
+elif [[ "$trace_status" == '405' || "$trace_status" == '501' ]]; then
+  pass 'TRACE is disabled.'
+elif grep -Fqi 'lighthouse-security-check' "$TRACE_BODY_FILE"; then
+  fail 'TRACE echoed the audit marker and appears enabled.'
+else
+  info 'TRACE was routed but did not echo the audit marker; review application routing.'
+fi
+
+OPTIONS_CMD=(
+  curl -k -sS
+  --connect-timeout "$CONNECT_TIMEOUT"
+  --max-time "$((CONNECT_TIMEOUT * 3))"
+  -X OPTIONS
+  -D "$OPTIONS_HEADERS_FILE"
+  -o /dev/null
+  -w '%{http_code}'
+  "https://$TARGET/"
+)
+show_command "${OPTIONS_CMD[@]}"
+options_status="$("${OPTIONS_CMD[@]}")"
+options_rc=$?
+allow_header=''
+(( options_rc == 0 )) && allow_header="$(header_value 'Allow' "$OPTIONS_HEADERS_FILE")"
+field 'OPTIONS status' "$options_status"
+field 'Allow header' "$allow_header"
+
+section 'Unauthenticated API Access Control'
+for api_path in users nodes ports interfaces; do
+  API_CMD=(
+    curl -k -sS
+    --connect-timeout "$CONNECT_TIMEOUT"
+    --max-time "$((CONNECT_TIMEOUT * 3))"
+    -o /dev/null
+    -w '%{http_code}'
+    "https://$TARGET/api/v3.7/$api_path"
+  )
+  show_command "${API_CMD[@]}"
+  api_status="$("${API_CMD[@]}")"
+  api_rc=$?
+  if (( api_rc != 0 )); then
+    warn "/api/v3.7/$api_path could not be tested."
+  elif [[ "$api_status" == '401' || "$api_status" == '403' ]]; then
+    pass "/api/v3.7/$api_path is access-controlled ($api_status)."
+  elif [[ "$api_status" =~ ^2 ]]; then
+    fail "/api/v3.7/$api_path returned $api_status without authentication."
+  else
+    info "/api/v3.7/$api_path returned $api_status without authentication."
+  fi
+done
+
+section 'Default TLS Negotiation'
+TLS_CMD=(
+  timeout "${TLS_TIMEOUT}s"
+  openssl s_client
+  -connect "$TARGET:443"
+  -servername "$TARGET"
+  -brief
+)
+show_command_stdin "${TLS_CMD[@]}"
+"${TLS_CMD[@]}" </dev/null >"$TLS_FILE" 2>&1 || true
+
+tls_protocol="$(awk -F': ' '/Protocol version:/ {print $2; exit}' "$TLS_FILE")"
+tls_cipher="$(awk -F': ' '/Ciphersuite:/ {print $2; exit}' "$TLS_FILE")"
+tls_group="$(awk -F': ' '/Peer Temp Key:|Negotiated TLS1.3 group:/ {print $2; exit}' "$TLS_FILE")"
+field 'Negotiated version' "$tls_protocol"
+field 'Cipher suite' "$tls_cipher"
+field 'Ephemeral group/key' "$tls_group"
+
+if [[ "$tls_protocol" == 'TLSv1.3' ]]; then
+  pass 'TLS 1.3 was negotiated by default.'
+elif [[ "$tls_protocol" == 'TLSv1.2' ]]; then
+  warn 'TLS 1.2 was negotiated by default; TLS 1.3 support should also be checked.'
+else
+  fail 'A modern TLS protocol could not be confirmed.'
+fi
+
+if [[ "$tls_cipher" == *'_GCM_'* || "$tls_cipher" == *'CHACHA20'* ]]; then
+  pass "An AEAD TLS cipher was negotiated: $tls_cipher"
+elif [[ -n "$tls_cipher" ]]; then
+  warn "Review the negotiated TLS cipher: $tls_cipher"
+fi
+
+section 'TLS Protocol Matrix'
+probe_tls_version() {
+  local label="$1"
+  local option="$2"
+  local expected="$3"
+  local policy="$4"
+  local -a command=(
+    timeout "${TLS_TIMEOUT}s"
+    openssl s_client
+    -connect "$TARGET:443"
+    -servername "$TARGET"
+    "$option"
+    -brief
+  )
+
+  show_command_stdin "${command[@]}"
+  "${command[@]}" </dev/null >"$TLS_PROBE_FILE" 2>&1 || true
+
+  if grep -Eqi 'BIO_connect|Connection refused|connect:errno|Network is unreachable|Operation not permitted|failed to connect' "$TLS_PROBE_FILE"; then
+    warn "$label probe is inconclusive because the TLS endpoint was not reachable."
+  elif grep -Fq "Protocol version: $expected" "$TLS_PROBE_FILE"; then
+    if [[ "$policy" == 'legacy' ]]; then
+      fail "$label is accepted."
+    else
+      pass "$label is accepted."
+    fi
+  elif grep -Eqi 'unknown option|unrecognized option|no protocols available' "$TLS_PROBE_FILE"; then
+    warn "$label probe is inconclusive because the local OpenSSL client could not run it."
+  elif [[ "$policy" == 'legacy' ]]; then
+    pass "$label was not negotiated."
+  else
+    warn "$label was not negotiated."
+  fi
+}
+
+probe_tls_version 'TLS 1.0' '-tls1' 'TLSv1' 'legacy'
+probe_tls_version 'TLS 1.1' '-tls1_1' 'TLSv1.1' 'legacy'
+probe_tls_version 'TLS 1.2' '-tls1_2' 'TLSv1.2' 'modern'
+probe_tls_version 'TLS 1.3' '-tls1_3' 'TLSv1.3' 'modern'
+
+section 'Certificate Identity and Cryptographic Profile'
+show_command_line "timeout ${TLS_TIMEOUT}s openssl s_client -connect ${TARGET}:443 -servername ${TARGET} -showcerts </dev/null | awk '<first PEM certificate>'"
+timeout "${TLS_TIMEOUT}s" openssl s_client \
+  -connect "$TARGET:443" \
+  -servername "$TARGET" \
+  -showcerts \
+  </dev/null 2>/dev/null |
+  awk '/-----BEGIN CERTIFICATE-----/ {capture=1} capture {print} /-----END CERTIFICATE-----/ {exit}' \
+    >"$CERT_FILE" || true
+
+if openssl x509 -in "$CERT_FILE" -noout >/dev/null 2>&1; then
+  openssl x509 -in "$CERT_FILE" -noout -text >"$CERT_TEXT_FILE"
+  subject="$(openssl x509 -in "$CERT_FILE" -noout -subject -nameopt RFC2253 | sed 's/^subject=//')"
+  issuer="$(openssl x509 -in "$CERT_FILE" -noout -issuer -nameopt RFC2253 | sed 's/^issuer=//')"
+  common_name="$(openssl x509 -in "$CERT_FILE" -noout -subject -nameopt multiline | awk -F' = ' '/commonName/ {print $2; exit}')"
+  serial="$(openssl x509 -in "$CERT_FILE" -noout -serial | sed 's/^serial=//')"
+  not_before="$(openssl x509 -in "$CERT_FILE" -noout -startdate | sed 's/^notBefore=//')"
+  not_after="$(openssl x509 -in "$CERT_FILE" -noout -enddate | sed 's/^notAfter=//')"
+  cert_fingerprint="$(openssl x509 -in "$CERT_FILE" -noout -fingerprint -sha256 | sed 's/^[^=]*=//')"
+  signature_algorithm="$(awk -F': ' '/^[[:space:]]*Signature Algorithm:/ {print $2; exit}' "$CERT_TEXT_FILE")"
+  public_key_algorithm="$(awk -F': ' '/^[[:space:]]*Public Key Algorithm:/ {print $2; exit}' "$CERT_TEXT_FILE")"
+  public_key_bits="$(sed -n '/Public-Key:/{s/.*(\([0-9][0-9]*\) bit).*/\1/;p;q;}' "$CERT_TEXT_FILE")"
+  sans="$(openssl x509 -in "$CERT_FILE" -noout -ext subjectAltName 2>/dev/null | awk 'NR>1 {gsub(/^[[:space:]]+/, ""); printf "%s%s", separator, $0; separator=" "}')"
+
+  field 'Subject' "$subject"
+  field 'Issuer' "$issuer"
+  field 'Common Name' "$common_name"
+  field 'Serial' "$serial"
+  field 'Valid from' "$not_before"
+  field 'Valid until' "$not_after"
+  field 'Subject Alternative Names' "$sans"
+  field 'Public key algorithm' "$public_key_algorithm"
+  field 'Public key bits' "$public_key_bits"
+  field 'Signature algorithm' "$signature_algorithm"
+  field 'SHA-256 fingerprint' "$cert_fingerprint"
+
+  show_command_line "openssl x509 -in certificate.pem -pubkey -noout | openssl pkey -pubin -outform DER | openssl dgst -sha256 -binary | openssl base64 -A"
+  spki_pin="$(openssl x509 -in "$CERT_FILE" -pubkey -noout 2>/dev/null |
+    openssl pkey -pubin -outform DER 2>/dev/null |
+    openssl dgst -sha256 -binary 2>/dev/null |
+    openssl base64 -A 2>/dev/null)"
+  [[ -n "$spki_pin" ]] && spki_pin="sha256/$spki_pin"
+  field 'SPKI pin' "$spki_pin"
+  info 'Fingerprint and SPKI pin are useful for trusted-baseline drift detection.'
+
+  if [[ "$subject" == "$issuer" ]]; then
+    verify_command=(openssl verify -CAfile "$CERT_FILE")
+    if openssl verify -help 2>&1 | grep -q -- '-check_ss_sig'; then
+      verify_command+=( -check_ss_sig )
+    fi
+    verify_command+=( "$CERT_FILE" )
+    show_command "${verify_command[@]}"
+    if "${verify_command[@]}" >/dev/null 2>&1; then
+      warn 'Certificate is cryptographically self-signed.'
+    else
+      warn 'Subject and issuer match, but the self-signature could not be verified.'
+    fi
+  else
+    pass 'Certificate subject and issuer differ.'
+  fi
+
+  if [[ "$TARGET" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+    identity_command=(openssl x509 -in "$CERT_FILE" -noout -checkip "$TARGET")
+  else
+    identity_command=(openssl x509 -in "$CERT_FILE" -noout -checkhost "$TARGET")
+  fi
+  show_command "${identity_command[@]}"
+  if "${identity_command[@]}" >/dev/null 2>&1; then
+    pass 'Certificate identity matches the requested target.'
+  else
+    warn 'Certificate identity does not match the requested target.'
+  fi
+
+  show_command openssl x509 -in "$CERT_FILE" -checkend 2592000 -noout
+  if openssl x509 -in "$CERT_FILE" -checkend 2592000 -noout >/dev/null 2>&1; then
+    pass 'Certificate remains valid for more than 30 days.'
+  else
+    fail 'Certificate is expired or expires within 30 days.'
+  fi
+
+  if [[ "$public_key_algorithm" == *'rsaEncryption'* && "$public_key_bits" =~ ^[0-9]+$ ]]; then
+    (( public_key_bits >= 2048 )) && pass "RSA key size is $public_key_bits bits." || fail "RSA key size is only $public_key_bits bits."
+  fi
+  [[ "${signature_algorithm,,}" == *'sha1'* ]] && fail "Certificate uses a SHA-1 signature: $signature_algorithm"
+else
+  fail 'Unable to extract the HTTPS certificate.'
+fi
+
+section 'SSH Negotiation and Hardening Signals'
+SSH_CMD=(
+  ssh -F /dev/null -vv
+  -p 22
+  -o BatchMode=yes
+  -o PreferredAuthentications=none
+  -o PubkeyAuthentication=no
+  -o PasswordAuthentication=no
+  -o KbdInteractiveAuthentication=no
+  -o ConnectTimeout="$CONNECT_TIMEOUT"
+  -o StrictHostKeyChecking=no
+  -o UserKnownHostsFile=/dev/null
+  "audit@$TARGET"
+  true
+)
+show_command "${SSH_CMD[@]}"
+"${SSH_CMD[@]}" >/dev/null 2>"$SSH_FILE" || true
+
+ssh_version="$(sed -n '/^debug1: Remote protocol version /{s/^debug1: Remote protocol version [^,]*, remote software version //;p;q;}' "$SSH_FILE")"
+negotiated_kex="$(sed -n '/^debug1: kex: algorithm: /{s///;p;q;}' "$SSH_FILE")"
+negotiated_hostkey="$(sed -n '/^debug1: kex: host key algorithm: /{s///;p;q;}' "$SSH_FILE")"
+negotiated_transport="$(sed -n '/^debug1: kex: server->client cipher: /{s///;p;q;}' "$SSH_FILE")"
+ssh_fingerprint="$(sed -n '/^debug1: Server host key: /{s/^debug1: Server host key: //;p;q;}' "$SSH_FILE")"
+ssh_auth_methods="$(sed -n '/^debug1: Authentications that can continue: /{s///;p;q;}' "$SSH_FILE")"
+
+peer_value() {
+  local source_file="$1"
+  local label="$2"
+  awk -v label="$label" '
+    /peer server KEXINIT proposal/ {peer=1; next}
+    peer && index($0, label) {
+      sub("^.*" label "[[:space:]]*", "")
+      print
+      exit
+    }
+  ' "$source_file"
+}
+
+server_kex="$(peer_value "$SSH_FILE" 'KEX algorithms:')"
+server_hostkeys="$(peer_value "$SSH_FILE" 'host key algorithms:')"
+server_ciphers="$(peer_value "$SSH_FILE" 'ciphers stoc:')"
+server_macs="$(peer_value "$SSH_FILE" 'MACs stoc:')"
+
+field 'SSH version' "$ssh_version"
+field 'Negotiated KEX' "$negotiated_kex"
+field 'Negotiated host key' "$negotiated_hostkey"
+field 'Negotiated transport' "$negotiated_transport"
+field 'Server host fingerprint' "$ssh_fingerprint"
+field 'Authentication methods' "$ssh_auth_methods"
+if (( SHOW_ALL )); then
+  field 'Offered KEX' "$server_kex"
+  field 'Offered host keys' "$server_hostkeys"
+  field 'Offered ciphers' "$server_ciphers"
+  field 'Offered MACs' "$server_macs"
+fi
+
+ssh_proposal="$server_kex,$server_hostkeys,$server_ciphers,$server_macs"
+if [[ -n "$server_kex" && -n "$server_ciphers" ]] &&
+  ! grep -Eqi 'diffie-hellman-group1-sha1|diffie-hellman-group14-sha1|ssh-dss|ssh-rsa-cert-v01|(^|,)ssh-rsa(,|$)|3des-cbc|arcfour|aes(128|192|256)-cbc|hmac-md5|hmac-sha1(-etm@openssh\.com)?(,|$)' <<<"$ssh_proposal"; then
+  pass 'No explicitly legacy SSH algorithms were detected in the server proposal.'
+elif [[ -z "$server_kex" && -z "$server_hostkeys" && -z "$server_ciphers" && -z "$server_macs" ]]; then
+  warn 'SSH algorithm enumeration was incomplete.'
+else
+  warn 'Legacy SSH algorithms may be present; review the offered algorithm lists.'
+fi
+
+if [[ "$server_kex" == *'kex-strict-s-v00@openssh.com'* ]]; then
+  pass 'SSH Strict KEX extension is offered (Terrapin mitigation signal).'
+else
+  warn 'SSH Strict KEX extension was not observed.'
+fi
+
+pq_kex="$(grep -Eo '((mlkem|sntrup)[^, ]*)' <<<"$server_kex" | paste -sd, - 2>/dev/null || true)"
+if [[ -n "$pq_kex" ]]; then
+  info "Hybrid post-quantum SSH KEX capability observed: $pq_kex"
+else
+  info 'No hybrid post-quantum SSH KEX was observed in the server proposal.'
+fi
+
+if [[ "$server_ciphers" == *'-gcm@openssh.com'* || "$server_ciphers" == *'chacha20-poly1305@openssh.com'* ]]; then
+  pass 'SSH offers AEAD encryption.'
+fi
+if [[ "$server_macs" == *'-etm@openssh.com'* ]]; then
+  pass 'SSH offers Encrypt-then-MAC modes.'
+fi
+
+if command -v ssh-keyscan >/dev/null 2>&1 && command -v ssh-keygen >/dev/null 2>&1; then
+  show_command_line "ssh-keyscan -T ${CONNECT_TIMEOUT} -p 22 -t rsa,ecdsa,ed25519 ${TARGET} 2>/dev/null | ssh-keygen -lf - -E sha256"
+  timeout "${TLS_TIMEOUT}s" ssh-keyscan -T "$CONNECT_TIMEOUT" -p 22 -t rsa,ecdsa,ed25519 "$TARGET" \
+    2>/dev/null >"$SSH_KEYS_FILE" || true
+  if [[ -s "$SSH_KEYS_FILE" ]]; then
+    while IFS= read -r fingerprint_line; do
+      printf '  %s%s%s\n' "$BLUE" "$fingerprint_line" "$RESET"
+    done < <(ssh-keygen -lf "$SSH_KEYS_FILE" -E sha256 2>/dev/null)
+    info 'ssh-keyscan fingerprints are TOFU/unverified until compared with a trusted baseline.'
+  else
+    warn 'Unable to collect SSH host-key fingerprints with ssh-keyscan.'
+  fi
+fi
+
+section 'FIPS / NIST Cryptographic Readiness — Remote Evidence Only'
+info 'This section tests constrained cryptographic interoperability; it does not certify the node.'
+
+FIPS_TLS_CMD=(
+  timeout "${TLS_TIMEOUT}s"
+  openssl s_client
+  -connect "$TARGET:443"
+  -servername "$TARGET"
+  -tls1_3
+  -ciphersuites TLS_AES_256_GCM_SHA384
+  -groups P-256
+  -sigalgs rsa_pss_rsae_sha256:rsa_pss_rsae_sha384:rsa_pkcs1_sha256:ecdsa_secp256r1_sha256
+  -brief
+)
+show_command_stdin "${FIPS_TLS_CMD[@]}"
+"${FIPS_TLS_CMD[@]}" </dev/null >"$FIPS_TLS_FILE" 2>&1 || true
+fips_tls_protocol="$(awk -F': ' '/Protocol version:/ {print $2; exit}' "$FIPS_TLS_FILE")"
+fips_tls_cipher="$(awk -F': ' '/Ciphersuite:/ {print $2; exit}' "$FIPS_TLS_FILE")"
+fips_tls_group="$(awk -F': ' '/Peer Temp Key:|Negotiated TLS1.3 group:/ {print $2; exit}' "$FIPS_TLS_FILE")"
+field 'Constrained TLS version' "$fips_tls_protocol"
+field 'Constrained TLS cipher' "$fips_tls_cipher"
+field 'Constrained TLS group' "$fips_tls_group"
+if [[ "$fips_tls_protocol" == 'TLSv1.3' && "$fips_tls_cipher" == 'TLS_AES_256_GCM_SHA384' ]]; then
+  fips_tls_result='FIPS-oriented TLS path negotiated'
+  pass "$fips_tls_result."
+else
+  fips_tls_result='FIPS-oriented TLS path not confirmed'
+  warn "$fips_tls_result."
+fi
+
+FIPS_SSH_CMD=(
+  ssh -F /dev/null -vv
+  -p 22
+  -o BatchMode=yes
+  -o PreferredAuthentications=none
+  -o PubkeyAuthentication=no
+  -o PasswordAuthentication=no
+  -o KbdInteractiveAuthentication=no
+  -o KexAlgorithms=ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,diffie-hellman-group14-sha256
+  -o HostKeyAlgorithms=rsa-sha2-512,rsa-sha2-256,ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521
+  -o Ciphers=aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr
+  -o MACs=hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-sha2-512,hmac-sha2-256
+  -o ConnectTimeout="$CONNECT_TIMEOUT"
+  -o StrictHostKeyChecking=no
+  -o UserKnownHostsFile=/dev/null
+  "audit@$TARGET"
+  true
+)
+show_command "${FIPS_SSH_CMD[@]}"
+"${FIPS_SSH_CMD[@]}" >/dev/null 2>"$FIPS_SSH_FILE" || true
+fips_ssh_kex="$(sed -n '/^debug1: kex: algorithm: /{s///;p;q;}' "$FIPS_SSH_FILE")"
+fips_ssh_hostkey="$(sed -n '/^debug1: kex: host key algorithm: /{s///;p;q;}' "$FIPS_SSH_FILE")"
+fips_ssh_transport="$(sed -n '/^debug1: kex: server->client cipher: /{s///;p;q;}' "$FIPS_SSH_FILE")"
+field 'Constrained SSH KEX' "$fips_ssh_kex"
+field 'Constrained SSH host key' "$fips_ssh_hostkey"
+field 'Constrained SSH transport' "$fips_ssh_transport"
+if grep -Fq 'SSH2_MSG_NEWKEYS received' "$FIPS_SSH_FILE"; then
+  fips_ssh_result='FIPS-oriented SSH path negotiated'
+  pass "$fips_ssh_result."
+else
+  fips_ssh_result='FIPS-oriented SSH path not confirmed'
+  warn "$fips_ssh_result."
+fi
+
+warn 'Formal FIPS 140-2/140-3 validation status: NOT REMOTELY VERIFIABLE.'
+info 'Approved algorithms alone do not prove that a validated module is operating in Approved Mode.'
+info 'Verify the exact module, version, operational environment, Security Policy, and CMVP certificate.'
+info 'NIST CMVP reference: https://csrc.nist.gov/projects/cryptographic-module-validation-program/validated-modules'
+
+show_manual_command 'cat /proc/sys/crypto/fips_enabled'
+show_manual_command "grep -o 'fips=[^ ]*' /proc/cmdline"
+show_manual_command 'fips-mode-setup --check'
+show_manual_command 'openssl version -a'
+show_manual_command 'openssl list -providers'
+
+section 'Executive Audit Snapshot'
+field 'HTTPS result' "${http_protocol:-unknown} status ${http_status:-unknown}"
+field 'Default TLS' "${tls_protocol:-unknown} / ${tls_cipher:-unknown}"
+field 'Certificate CN' "$common_name"
+field 'Certificate fingerprint' "$cert_fingerprint"
+field 'Certificate SPKI pin' "$spki_pin"
+field 'SSH server' "$ssh_version"
+field 'SSH fingerprint' "$ssh_fingerprint"
+field 'Default SSH KEX' "$negotiated_kex"
+field 'Default SSH transport' "$negotiated_transport"
+field 'FIPS-oriented TLS' "$fips_tls_result"
+field 'FIPS-oriented SSH' "$fips_ssh_result"
+warn 'Formal FIPS compliance remains unverified and requires vendor/CMVP evidence.'
+info 'Store certificate and SSH fingerprints in a trusted baseline to detect identity drift or unexpected replacement.'
