@@ -1,9 +1,13 @@
 listen_host: 0.0.0.0
 listen_port: 7284
-# Allowlist obligatoria: vacío = se rechaza cualquier objetivo.
-# Ajustar a la(s) red(es) de laboratorio autorizadas.
+# Mandatory allowlist: empty = every target is rejected.
+# Set it to the authorised lab network(s).
 allow_networks:
   - 0.0.0.0/0
 cache_ttl_s: 86400
+# Built-in profiles and policies (read-only).
 policies_dir: config/policies
 profiles_dir: config/profiles
+# Where the profiles and policies engineers upload are stored, shared by everyone.
+# Under systemd it defaults to /var/lib/ssh-auditor (StateDirectory); empty = no uploads.
+# custom_dir: data

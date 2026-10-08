@@ -1,0 +1,9 @@
+id: generic
+name: Generic
+description: Any SSH device with a Linux shell.
+shell: linux
+safe_command: id
+limits:
+  max_connections: 20
+  max_concurrency: 4
+policy: base

@@ -4,8 +4,8 @@ import pytest_asyncio
 
 class _Server(asyncssh.SSHServer):
     def begin_auth(self, username):
-        # Devolver True fuerza autenticación; las pruebas de Fase 1 no autentican,
-        # solo leen la negociación, así que el valor no afecta a KEXINIT.
+        # True forces authentication; Phase 1 tests don't authenticate, they only
+        # read the negotiation, so the value doesn't affect KEXINIT.
         return True
 
 

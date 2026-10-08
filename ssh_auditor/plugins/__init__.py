@@ -1,1 +1,1 @@
-from . import connectivity, negotiation  # noqa: F401  (auto-registro de plugins)
+from . import connectivity, negotiation  # noqa: F401  (plugins register themselves on import)

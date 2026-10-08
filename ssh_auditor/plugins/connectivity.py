@@ -10,7 +10,7 @@ from ssh_auditor.plugins.base import Context, Meta, register
 class ConnectivityPlugin:
     meta = Meta(
         id="connectivity", version="1", category="A",
-        name="Conectividad TCP y banner", impact="none",
+        name="TCP connectivity and banner", impact="none",
         requires_auth=False, timeout_s=10.0,
     )
 
@@ -45,11 +45,11 @@ class ConnectivityPlugin:
             return [
                 Finding(
                     id="tcp", status=Status.FAIL,
-                    summary=f"No se pudo abrir TCP {d.get('error', '')}".strip(),
-                    recommendation="Verificar red, puerto y allowlist.",
+                    summary=f"Could not open TCP {d.get('error', '')}".strip(),
+                    recommendation="Check the network, port and allowlist.",
                 )
             ]
-        out = [Finding(id="tcp", status=Status.PASS, summary=f"TCP abierto en {d['connect_ms']} ms")]
+        out = [Finding(id="tcp", status=Status.PASS, summary=f"TCP open in {d['connect_ms']} ms")]
         if d.get("banner"):
             out.append(Finding(id="banner", status=Status.INFO, summary=d["banner"]))
         return out

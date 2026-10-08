@@ -1,7 +1,7 @@
 import asyncssh
 import pytest
 
-from ssh_auditor.config import load_policy, Config
+from ssh_auditor.store import Store
 
 from ssh_auditor.models import Evidence, Status
 from ssh_auditor.plugins.base import Context
@@ -21,7 +21,7 @@ async def test_negotiation_reads_algorithms(ssh_server):
     assert ev.data["negotiated"]["kex"] in ev.data["kex"]
     assert ev.data["auth_methods"] == []
     ids = {f.id for f in p.evaluate(ev, {})}
-    assert {"version", "negociado:kex", "strict-kex", "aead", "fips", "auth-metodos"} <= ids
+    assert {"version", "negotiated:kex", "strict-kex", "aead", "fips", "auth-methods"} <= ids
 
 
 @pytest.mark.asyncio
@@ -29,7 +29,7 @@ async def test_negotiation_policy_flags_prohibited(ssh_server):
     host, port = ssh_server
     p = NegotiationPlugin()
     ev = await p.collect(Context(host=host, port=port, policy={}, params={}, emit=lambda m: None))
-    policy = {"kex": {"prohibidos": [ev.data["kex"][0]]}}
+    policy = {"kex": {"forbidden": [ev.data["kex"][0]]}}
     findings = p.evaluate(ev, policy)
     assert any(f.status == Status.FAIL for f in findings)
 
@@ -57,7 +57,7 @@ async def test_negotiation_reads_auth_methods():
         server.close()
         await server.wait_closed()
     assert "password" in ev.data["auth_methods"]
-    f = next(f for f in p.evaluate(ev, {}) if f.id == "auth-metodos")
+    f = next(f for f in p.evaluate(ev, {}) if f.id == "auth-methods")
     assert f.status == Status.INFO and "password" in f.summary
 
 
@@ -82,17 +82,17 @@ def _legacy_evidence(**over):
 
 
 def test_evaluate_legacy_server_against_base_policy():
-    policy = load_policy(Config(), "base")
+    policy = Store("policies", "config/policies", None).load("base").model_dump()
     by = {f.id: f for f in NegotiationPlugin().evaluate(_legacy_evidence(), policy)}
-    for fid in ("kex-prohibido:diffie-hellman-group14-sha1", "hostkey-prohibido:ssh-rsa",
-                "cifrado-prohibido:aes128-cbc", "mac-prohibido:hmac-sha1"):
+    for fid in ("kex-forbidden:diffie-hellman-group14-sha1", "hostkey-forbidden:ssh-rsa",
+                "cipher-forbidden:aes128-cbc", "mac-forbidden:hmac-sha1"):
         assert by[fid].status == Status.FAIL
-    assert "prohibidos" not in by
+    assert "no-forbidden" not in by
     assert by["strict-kex"].status == Status.WARN
     assert by["aead"].status == Status.WARN
     assert by["etm"].status == Status.WARN
     assert by["fips"].status == Status.WARN and "KEX" in by["fips"].summary
-    assert by["auth-metodos"].status == Status.FAIL
+    assert by["auth-methods"].status == Status.FAIL
     assert by["version"].summary.endswith("OpenSSH_7.4")
 
 
@@ -101,7 +101,7 @@ def test_evaluate_negotiation_failure_and_clean_policy():
                                       "cipher": "aes128-ctr", "mac": "hmac-sha2-256"},
                           auth_methods=None, auth_methods_error="KeyExchangeFailed: x")
     by = {f.id: f for f in NegotiationPlugin().evaluate(ev, {})}
-    assert by["negociado:kex"].status == Status.FAIL
-    assert by["negociado:cipher"].status == Status.INFO
-    assert by["prohibidos"].status == Status.PASS
-    assert by["auth-metodos"].status == Status.WARN
+    assert by["negotiated:kex"].status == Status.FAIL
+    assert by["negotiated:cipher"].status == Status.INFO
+    assert by["no-forbidden"].status == Status.PASS
+    assert by["auth-methods"].status == Status.WARN

@@ -1,7 +1,7 @@
 [project]
 name = "ssh-auditor"
 version = "0.1.0"
-description = "SSH Security Auditor — herramienta interna de auditoría SSH"
+description = "SSH Security Auditor — internal SSH audit tool"
 requires-python = ">=3.13"
 dependencies = [
     "asyncssh>=2.24",

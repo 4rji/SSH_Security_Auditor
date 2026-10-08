@@ -1,0 +1,23 @@
+# Example device profile for SSH Security Auditor.
+# Upload it from the "Device profile" section after changing the id. Every engineer will see it.
+# A profile never holds credentials: engineers type them in their own browser.
+#
+# id: lowercase letters, digits, "-" or "_" (max 48). It must be unique on the server.
+id: my-router
+# name and description: what other engineers see in the list.
+name: My router
+description: Example profile for a router with a Linux shell.
+
+# Shell type after login: "linux" or "router-cli".
+shell: linux
+# Harmless command run after login to confirm the session works (later phases).
+safe_command: id
+
+limits:
+  # Maximum connections the device may receive in the concurrency tests (later phases).
+  max_connections: 20
+  # Maximum parallel connections this tool opens against one device.
+  max_concurrency: 4
+
+# Policy selected by default with this profile (id of an existing policy).
+policy: base

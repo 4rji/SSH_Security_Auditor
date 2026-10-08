@@ -31,7 +31,7 @@ async def _run_one(test_id: str, ctx: Context, sem: asyncio.Semaphore) -> TestRe
             test_id=test_id, test_version="0", category="?",
             status=Status.ERROR,
             findings=[Finding(id=test_id, status=Status.ERROR,
-                              summary=f"Prueba desconocida: {test_id}")],
+                              summary=f"Unknown test: {test_id}")],
             evidence=Evidence(data={}), duration_ms=0, impact="none",
         )
     t0 = time.monotonic()
@@ -77,6 +77,7 @@ async def run_scan(
         scan_id=scan_id, target_host=req.target_host, port=req.port, profile=req.profile,
         policy_name=req.policy, started_at=started, finished_at=datetime.now(timezone.utc),
         status="done", results=results, tool_version=tool_version,
+        run_by=req.run_by.strip(),
     )
     cache.put(scan_id, sr)
     emit({"type": "finished", "scan_id": scan_id,

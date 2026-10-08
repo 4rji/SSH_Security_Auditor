@@ -11,7 +11,7 @@ def test_scan_result_summary_counts_by_status():
         )
 
     sr = ScanResult(
-        scan_id="s1", target_host="10.0.0.5", port=22, profile="generico",
+        scan_id="s1", target_host="10.0.0.5", port=22, profile="generic",
         policy_name="base", started_at=datetime.now(timezone.utc),
         finished_at=None, status="running",
         results=[tr(Status.PASS), tr(Status.PASS), tr(Status.FAIL)],

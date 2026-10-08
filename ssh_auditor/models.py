@@ -41,10 +41,12 @@ class TestResult(BaseModel):
 class ScanRequest(BaseModel):
     target_host: str
     port: int = 22
-    profile: str = "generico"
+    profile: str = "generic"
     tests: list[str] = Field(default_factory=list)
     policy: str = "base"
     params: dict = Field(default_factory=dict)
+    # Optional name of the engineer who runs the scan (the "Your name" field).
+    run_by: str = Field("", max_length=80)
 
 
 class ScanResult(BaseModel):
@@ -59,6 +61,7 @@ class ScanResult(BaseModel):
     status: str
     results: list[TestResult]
     tool_version: str
+    run_by: str = ""
 
     def summary(self) -> dict[Status, int]:
         out: dict[Status, int] = {}

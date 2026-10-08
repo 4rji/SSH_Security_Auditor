@@ -53,7 +53,7 @@ def test_negotiate_picks_first_client_preference_and_implicit_mac():
     assert n["kex"] == "curve25519-sha256"
     assert n["host_key"] == "ssh-ed25519"
     assert n["cipher"] == "aes256-gcm@openssh.com"
-    assert n["mac"] == "implícito (AEAD)"
+    assert n["mac"] == "implicit (AEAD)"
 
 
 def test_negotiate_reports_missing_common_algorithm():

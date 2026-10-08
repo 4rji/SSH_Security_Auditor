@@ -32,8 +32,8 @@ def test_compare_detects_improvement_and_new():
     b = _sr([_tr("negotiation", Status.PASS), _tr("connectivity", Status.PASS)])
     res = compare(a, b)
     by = {t["test_id"]: t for t in res["tests"]}
-    assert by["negotiation"]["change"] == "Mejoró"
-    assert by["connectivity"]["change"] == "Nueva"
+    assert by["negotiation"]["change"] == "Improved"
+    assert by["connectivity"]["change"] == "New"
 
 
 def test_compare_evidence_hostkey_change_and_version_warning():
@@ -47,29 +47,29 @@ def test_compare_evidence_hostkey_change_and_version_warning():
     diff = res["evidence_diff"]["negotiation"]
     assert diff["host_key_changed"] is True
     assert "y" in _field(diff, "kex")["added"]
-    assert any("versión" in w.lower() or "version" in w.lower() for w in res["warnings"])
+    assert any("version" in w.lower() for w in res["warnings"])
 
 
 def test_compare_findings_matched_by_id():
     a = _sr([_tr("negotiation", Status.FAIL, findings=[
-        _f("terrapin", Status.FAIL, "Vulnerable a Terrapin (CVE-2023-48795)"),
+        _f("terrapin", Status.FAIL, "Vulnerable to Terrapin (CVE-2023-48795)"),
         _f("hostkey:ssh-rsa", Status.INFO, "ssh-rsa SHA256:AAA"),
-        _f("kex-prohibido:diffie-hellman-group1-sha1", Status.FAIL, "prohibido"),
+        _f("kex-forbidden:diffie-hellman-group1-sha1", Status.FAIL, "forbidden"),
     ])])
     b = _sr([_tr("negotiation", Status.WARN, findings=[
-        _f("terrapin", Status.PASS, "No vulnerable a Terrapin"),
+        _f("terrapin", Status.PASS, "Not vulnerable to Terrapin"),
         _f("hostkey:ssh-rsa", Status.INFO, "ssh-rsa SHA256:BBB"),
-        _f("pq-kex", Status.WARN, "Sin intercambio de claves post-cuántico"),
+        _f("pq-kex", Status.WARN, "No post-quantum key exchange"),
     ])])
     res = compare(a, b)
     fs = {f["id"]: f for f in res["tests"][0]["findings"]}
-    assert fs["terrapin"]["change"] == "Mejoró"
+    assert fs["terrapin"]["change"] == "Improved"
     assert fs["terrapin"]["summary_a"].startswith("Vulnerable")
-    assert fs["hostkey:ssh-rsa"]["change"] == "Cambió"
-    assert fs["pq-kex"]["change"] == "Nuevo"
-    assert fs["kex-prohibido:diffie-hellman-group1-sha1"]["change"] == "Desaparecido"
-    assert res["summary"]["findings"]["Mejoró"] == 1
-    assert res["summary"]["tests"] == {"Mejoró": 1}
+    assert fs["hostkey:ssh-rsa"]["change"] == "Changed"
+    assert fs["pq-kex"]["change"] == "New"
+    assert fs["kex-forbidden:diffie-hellman-group1-sha1"]["change"] == "Removed"
+    assert res["summary"]["findings"]["Improved"] == 1
+    assert res["summary"]["tests"] == {"Improved": 1}
 
 
 def test_compare_evidence_field_kinds():
@@ -93,5 +93,14 @@ def test_compare_evidence_field_kinds():
     enc = _field(ev["negotiation"], "enc_s2c")
     assert enc["added"] == ["z"] and enc["removed"] == ["y"]
     fps = {i["key"]: i["change"] for i in _field(ev["negotiation"], "host_key_fingerprints")["items"]}
-    assert fps == {"ssh-ed25519": "Igual", "rsa-sha2-512": "Nueva"}
+    assert fps == {"ssh-ed25519": "Unchanged", "rsa-sha2-512": "New"}
     assert ev["negotiation"]["host_key_changed"] is True
+
+
+def test_compare_marks_the_side_without_data():
+    a = _sr([_tr("negotiation", Status.ERROR, {"error": "TimeoutError"})])
+    b = _sr([_tr("negotiation", Status.PASS, {"software": "OpenSSH_10.0p2", "kex": ["x"],
+                                              "negotiated": {"kex": "x"}})])
+    fields = compare(a, b)["evidence_diff"]["negotiation"]["fields"]
+    missing = {f["field"]: f["missing"] for f in fields}
+    assert missing == {"software": "a", "kex": "a", "negotiated": "a", "error": "b"}

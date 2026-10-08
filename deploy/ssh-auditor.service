@@ -1,5 +1,5 @@
 [Unit]
-Description=SSH Security Auditor (interno)
+Description=SSH Security Auditor (internal)
 After=network-online.target
 Wants=network-online.target
 
@@ -13,7 +13,7 @@ ExecStart=/opt/ssh-auditor/.venv/bin/python -m ssh_auditor
 Restart=on-failure
 RestartSec=2
 
-# Endurecimiento
+# Hardening
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
@@ -24,7 +24,9 @@ ProtectKernelTunables=true
 RestrictSUIDSGID=true
 LockPersonality=true
 MemoryMax=1G
-# El servicio no escribe en disco; no necesita ReadWritePaths.
+# The only writable path: uploaded profiles and policies in /var/lib/ssh-auditor.
+StateDirectory=ssh-auditor
+StateDirectoryMode=0750
 
 [Install]
 WantedBy=multi-user.target

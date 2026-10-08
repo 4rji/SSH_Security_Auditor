@@ -8,8 +8,8 @@ STRICT_KEX_MARKER = "kex-strict-s-v00@openssh.com"
 PQ_KEX_PREFIXES = ("mlkem", "sntrup")
 AEAD_CIPHERS_SUFFIXES = ("-gcm@openssh.com", "chacha20-poly1305@openssh.com")
 
-# Preferencias por defecto de un cliente OpenSSH 10.0 (`ssh -G`): sirven para calcular
-# qué negociaría un cliente moderno, sin abrir más conexiones.
+# Default preferences of an OpenSSH 10.0 client (`ssh -G`): used to work out what a
+# modern client would negotiate, without opening more connections.
 REFERENCE_CLIENT = {
     "kex": [
         "mlkem768x25519-sha256", "sntrup761x25519-sha512",
@@ -35,8 +35,8 @@ REFERENCE_CLIENT = {
     ],
 }
 
-# Cliente restringido a algoritmos aprobados por NIST (orientativo: que se negocien no
-# demuestra un módulo FIPS 140-3 validado).
+# Client restricted to NIST-approved algorithms (indicative only: negotiating them does
+# not prove a validated FIPS 140-3 module).
 FIPS_CLIENT = {
     "kex": [
         "ecdh-sha2-nistp256", "ecdh-sha2-nistp384", "ecdh-sha2-nistp521",
@@ -77,11 +77,11 @@ class KexInit:
 
 def _read_namelist(buf: bytes, off: int) -> tuple[list[str], int]:
     if off + 4 > len(buf):
-        raise KexInitError("truncado leyendo longitud de name-list")
+        raise KexInitError("truncated while reading a name-list length")
     (length,) = struct.unpack_from(">I", buf, off)
     off += 4
     if off + length > len(buf):
-        raise KexInitError("truncado leyendo name-list")
+        raise KexInitError("truncated while reading a name-list")
     raw = buf[off:off + length].decode("ascii", "replace")
     off += length
     names = [n for n in raw.split(",") if n] if raw else []
@@ -90,16 +90,16 @@ def _read_namelist(buf: bytes, off: int) -> tuple[list[str], int]:
 
 def parse_kexinit(payload: bytes) -> KexInit:
     if len(payload) < 1 + 16:
-        raise KexInitError("payload demasiado corto")
+        raise KexInitError("payload too short")
     if payload[0] != SSH_MSG_KEXINIT:
-        raise KexInitError(f"no es KEXINIT (tipo {payload[0]})")
-    off = 1 + 16  # tipo de mensaje + cookie de 16 bytes
+        raise KexInitError(f"not a KEXINIT (type {payload[0]})")
+    off = 1 + 16  # message type + 16-byte cookie
     lists: list[list[str]] = []
     for _ in range(10):
         names, off = _read_namelist(payload, off)
         lists.append(names)
     if off + 1 > len(payload):
-        raise KexInitError("truncado leyendo first_kex_follows")
+        raise KexInitError("truncated while reading first_kex_follows")
     first = payload[off] != 0
     return KexInit(
         kex=lists[0],
@@ -127,15 +127,15 @@ def is_aead(cipher: str) -> bool:
 
 
 def negotiate(client: dict[str, list[str]], k: KexInit) -> dict[str, str | None]:
-    """Algoritmos que elegiría `client` (RFC 4253 §7.1: el primero del cliente que el
-    servidor también ofrece). None = no hay ninguno en común. Con un cifrado AEAD el
-    MAC va implícito y se devuelve como "implícito (AEAD)"."""
+    """Algorithms `client` would choose (RFC 4253 §7.1: the client's first one that the
+    server also offers). None = nothing in common. With an AEAD cipher the MAC is
+    implicit and is returned as "implicit (AEAD)"."""
     def pick(mine: list[str], theirs: list[str]) -> str | None:
         return next((a for a in mine if a in theirs), None)
 
     cipher = pick(client["cipher"], k.enc_s2c)
     if cipher and is_aead(cipher):
-        mac = "implícito (AEAD)"
+        mac = "implicit (AEAD)"
     else:
         mac = pick(client["mac"], k.mac_s2c)
     return {

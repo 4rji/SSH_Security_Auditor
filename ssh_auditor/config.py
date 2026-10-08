@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ipaddress
+import os
 import socket
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -16,11 +17,18 @@ class Config:
     cache_ttl_s: int = 86400
     policies_dir: str = "config/policies"
     profiles_dir: str = "config/profiles"
+    # Writable directory for the profiles and policies engineers upload (shared by all).
+    # Empty = uploads disabled.
+    custom_dir: str = "data"
 
 
 def load_config(path) -> Config:
     raw = yaml.safe_load(Path(path).read_text()) or {}
     known = {k: v for k, v in raw.items() if k in Config.__dataclass_fields__}
+    # Under systemd, StateDirectory= sets $STATE_DIRECTORY (/var/lib/ssh-auditor): the only
+    # writable place when ProtectSystem=strict, so uploads go there unless configured.
+    if "custom_dir" not in known and os.environ.get("STATE_DIRECTORY"):
+        known["custom_dir"] = os.environ["STATE_DIRECTORY"].split(":")[0]
     return Config(**known)
 
 
@@ -48,27 +56,3 @@ def target_allowed(cfg: Config, host: str) -> bool:
         if any(addr in n for n in nets):
             return True
     return False
-
-
-def load_policy(cfg: Config, name: str) -> dict:
-    path = Path(cfg.policies_dir) / f"{name}.yaml"
-    if not path.exists():
-        return {}
-    return yaml.safe_load(path.read_text()) or {}
-
-
-def load_profile(cfg: Config, name: str) -> dict:
-    path = Path(cfg.profiles_dir) / f"{name}.yaml"
-    if not path.exists():
-        return {}
-    return yaml.safe_load(path.read_text()) or {}
-
-
-def list_policies(cfg: Config) -> list[str]:
-    d = Path(cfg.policies_dir)
-    return sorted(p.stem for p in d.glob("*.yaml")) if d.exists() else []
-
-
-def list_profiles(cfg: Config) -> list[str]:
-    d = Path(cfg.profiles_dir)
-    return sorted(p.stem for p in d.glob("*.yaml")) if d.exists() else []

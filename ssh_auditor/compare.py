@@ -13,10 +13,10 @@ _RANK = {
 def _change(sa: Status, sb: Status) -> str:
     ra, rb = _RANK[sa], _RANK[sb]
     if rb > ra:
-        return "Mejoró"
+        return "Improved"
     if rb < ra:
-        return "Empeoró"
-    return "Igual"
+        return "Regressed"
+    return "Unchanged"
 
 
 def _is_num(x) -> bool:
@@ -24,13 +24,21 @@ def _is_num(x) -> bool:
 
 
 def _field_diff(field: str, va, vb) -> dict:
-    """Diferencia de un campo de evidencia según su forma: lista, mapa o valor."""
+    """Difference of one evidence field, by shape: list, map or value. `missing` names the
+    side ("a" or "b") that has no value at all: an older export, or a test that failed."""
+    out = _shape_diff(field, va, vb)
+    out["missing"] = ("a" if va is None and vb is not None
+                      else "b" if vb is None and va is not None else None)
+    return out
+
+
+def _shape_diff(field: str, va, vb) -> dict:
     if isinstance(va, list) or isinstance(vb, list):
         la, lb = va or [], vb or []
         sa, sb = set(la), set(lb)
         return {
             "field": field, "kind": "list", "before": la, "after": lb,
-            # En el orden del servidor: el orden de KEXINIT es su preferencia.
+            # In the server's order: KEXINIT order is its preference.
             "added": [x for x in lb if x not in sa],
             "removed": [x for x in la if x not in sb],
             "reordered": sa == sb and la != lb,
@@ -41,11 +49,11 @@ def _field_diff(field: str, va, vb) -> dict:
         items = []
         for k in dict.fromkeys([*da, *db]):
             if k in da and k in db:
-                change = "Igual" if da[k] == db[k] else "Cambió"
+                change = "Unchanged" if da[k] == db[k] else "Changed"
             elif k in db:
-                change = "Nueva"
+                change = "New"
             else:
-                change = "Desaparecida"
+                change = "Removed"
             items.append({"key": k, "before": da.get(k), "after": db.get(k), "change": change})
         return {"field": field, "kind": "map", "items": items, "changed": da != db}
     out = {"field": field, "kind": "value", "before": va, "after": vb, "changed": va != vb}
@@ -62,12 +70,12 @@ def _findings(ta: TestResult | None, tb: TestResult | None) -> list[dict]:
         a, b = fa.get(fid), fb.get(fid)
         if a and b:
             change = _change(a.status, b.status)
-            if change == "Igual" and a.summary != b.summary:
-                change = "Cambió"
+            if change == "Unchanged" and a.summary != b.summary:
+                change = "Changed"
         elif b:
-            change = "Nuevo"
+            change = "New"
         else:
-            change = "Desaparecido"
+            change = "Removed"
         out.append({
             "id": fid, "change": change,
             "status_a": a.status.value if a else None,
@@ -84,6 +92,7 @@ def _meta(sr: ScanResult) -> dict:
         "scan_id": sr.scan_id, "target_host": sr.target_host, "port": sr.port,
         "profile": sr.profile, "policy_name": sr.policy_name,
         "started_at": sr.started_at.isoformat(), "tool_version": sr.tool_version,
+        "run_by": sr.run_by,
     }
 
 
@@ -97,9 +106,9 @@ def compare(a: ScanResult, b: ScanResult) -> dict:
             sa, sb = ra[tid].status, rb[tid].status
             change = _change(sa, sb)
         elif tid in rb:
-            change, sa, sb = "Nueva", None, rb[tid].status
+            change, sa, sb = "New", None, rb[tid].status
         else:
-            change, sa, sb = "Desaparecida", ra[tid].status, None
+            change, sa, sb = "Removed", ra[tid].status, None
         tests.append({
             "test_id": tid, "change": change,
             "status_a": sa.value if sa else None,
@@ -119,13 +128,13 @@ def compare(a: ScanResult, b: ScanResult) -> dict:
 
     warnings = []
     if a.tool_version != b.tool_version:
-        warnings.append(f"Versión de herramienta distinta: {a.tool_version} vs {b.tool_version}")
+        warnings.append(f"Different tool version: {a.tool_version} vs {b.tool_version}")
     if a.policy_name != b.policy_name:
-        warnings.append(f"Política distinta: {a.policy_name} vs {b.policy_name}")
+        warnings.append(f"Different policy: {a.policy_name} vs {b.policy_name}")
     for tid in sorted(set(ra) & set(rb)):
         if ra[tid].test_version != rb[tid].test_version:
             warnings.append(
-                f"Versión del plugin '{tid}' distinta: "
+                f"Different '{tid}' plugin version: "
                 f"{ra[tid].test_version} vs {rb[tid].test_version}"
             )
 

@@ -1,0 +1,35 @@
+# Example SSH policy for SSH Security Auditor.
+# Upload it from the "Policy" section after changing the id. Every engineer will see it.
+#
+# id: lowercase letters, digits, "-" or "_" (max 48). It must be unique on the server.
+id: my-policy
+# name and description: what other engineers see in the list.
+name: My policy
+description: Example policy. Each list names algorithms the server must NOT offer.
+
+# Key exchange algorithms (KexAlgorithms in sshd_config).
+kex:
+  forbidden:
+    - diffie-hellman-group1-sha1
+    - diffie-hellman-group14-sha1
+    - diffie-hellman-group-exchange-sha1
+
+# Ciphers (Ciphers in sshd_config).
+ciphers:
+  forbidden:
+    - 3des-cbc
+    - aes128-cbc
+    - aes256-cbc
+    - arcfour
+
+# MACs (MACs in sshd_config).
+macs:
+  forbidden:
+    - hmac-md5
+    - hmac-sha1
+
+# Host key algorithms (HostKeyAlgorithms in sshd_config).
+host_key:
+  forbidden:
+    - ssh-rsa
+    - ssh-dss

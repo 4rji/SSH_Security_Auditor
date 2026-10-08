@@ -1,24 +1,40 @@
 <!doctype html>
-<html lang="es">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>SSH Security Auditor</title>
+  <script>
+    // Dark by default; apply a saved "light" choice before the page paints.
+    try { if (localStorage.getItem("sshAuditor.theme") === "light") document.documentElement.dataset.theme = "light"; } catch (_) {}
+  </script>
   <style>
     :root { color-scheme:dark;
-            --fg:#e6edf3; --mut:#9198a1; --bd:#30363d; --bg:#0d1117; --pan:#161b22;
+            --fg:#e6edf3; --mut:#9198a1; --bd:#30363d; --bg:#0d1117; --pan:#161b22; --btn:#21262d;
             --pass:#3fb950; --warn:#d29922; --fail:#f85149; --info:#58a6ff; --skip:#9198a1; }
+    :root[data-theme="light"] { color-scheme:light;
+            --fg:#1f2328; --mut:#59636e; --bd:#d0d7de; --bg:#ffffff; --pan:#f6f8fa; --btn:#f6f8fa;
+            --pass:#1a7f37; --warn:#9a6700; --fail:#cf222e; --info:#0969da; --skip:#59636e; }
     * { box-sizing:border-box; }
     body { font-family:system-ui,-apple-system,sans-serif; margin:0; color:var(--fg);
            background:var(--bg); line-height:1.5; }
-    header { background:var(--pan); border-bottom:1px solid var(--bd); padding:1rem 1.5rem; }
-    header h1 { margin:0; font-size:1.5rem; }
+    header { background:var(--pan); border-bottom:1px solid var(--bd); padding:1rem 1.5rem;
+             display:flex; align-items:center; gap:1rem; flex-wrap:wrap; }
+    header h1 { margin:0; font-size:1.5rem; flex:1; }
     header a { color:var(--info); text-decoration:none; font-size:1rem; margin-left:1rem; }
+    header .me { display:flex; align-items:center; gap:.5rem; margin:0; color:var(--mut); }
+    header .me input { width:14rem; }
     main { padding:1.5rem; }
-    .step { border:1px solid var(--bd); border-radius:8px; margin-bottom:1rem; }
-    .step > summary { cursor:pointer; padding:.75rem 1rem; font-weight:600; background:var(--pan);
-                      border-radius:8px; list-style:none; }
-    .step[open] > summary { border-bottom:1px solid var(--bd); border-radius:8px 8px 0 0; }
+    /* Each step has its own accent; tints are mixed with the theme background, so they
+       work in dark and light. */
+    .step { --accent:var(--info); border:1px solid var(--bd); border-left:4px solid var(--accent);
+            border-radius:8px; margin-bottom:1rem;
+            background:color-mix(in srgb, var(--accent) 7%, var(--bg)); }
+    .step.s1 { --accent:#388bfd; } .step.s2 { --accent:#a371f7; } .step.s3 { --accent:#3fb950; }
+    .step.s4 { --accent:#d29922; } .step.s5 { --accent:#db61a2; }
+    .step > summary { cursor:pointer; padding:.75rem 1rem; font-weight:600; list-style:none;
+                      background:color-mix(in srgb, var(--accent) 18%, var(--bg)); border-radius:4px 8px 8px 4px; }
+    .step[open] > summary { border-bottom:1px solid var(--bd); border-radius:4px 8px 0 0; }
     .step > div { padding:1rem; }
     label { display:block; font-size:1rem; color:var(--mut); margin:.5rem 0 .2rem; }
     input, select { width:100%; padding:.45rem .6rem; border:1px solid var(--bd); border-radius:6px;
@@ -30,9 +46,14 @@
     .tests input { width:auto; }
     button { background:#1f6feb; color:#fff; border:0; border-radius:6px; padding:.55rem 1rem;
              font-size:1rem; cursor:pointer; }
-    button.sec { background:#21262d; color:var(--fg); border:1px solid var(--bd); }
+    button.sec { background:var(--btn); color:var(--fg); border:1px solid var(--bd); }
+    button.small { padding:.3rem .7rem; font-size:.95rem; }
+    button.danger { color:var(--fail); }
     button:disabled { opacity:.5; cursor:not-allowed; }
     .bar { display:flex; gap:.5rem; flex-wrap:wrap; margin:1rem 0; }
+    .tools { display:flex; gap:.4rem; flex-wrap:wrap; margin-top:.5rem; }
+    .itemmeta { margin-top:.3rem; }
+    .ok { color:var(--pass); } .err { color:var(--fail); }
     .muted { color:var(--mut); font-size:1rem; }
     table { border-collapse:collapse; width:100%; margin-top:.5rem; }
     th,td { border:1px solid var(--bd); padding:.4rem .6rem; text-align:left; font-size:1rem;
@@ -42,83 +63,145 @@
     .st { font-weight:700; white-space:nowrap; }
     .PASS{color:var(--pass)} .WARN{color:var(--warn)} .FAIL{color:var(--fail)}
     .ERROR{color:var(--fail)} .INFO{color:var(--info)} .SKIP{color:var(--skip)}
-    #log { font-family:ui-monospace,monospace; font-size:.95rem; background:var(--pan);
+    #log, .log { font-family:ui-monospace,monospace; font-size:.95rem; background:var(--pan);
            border:1px solid var(--bd); border-radius:6px; padding:.5rem; max-height:150px;
-           overflow:auto; white-space:pre-wrap; }
+           overflow:auto; white-space:pre-wrap; margin:0; }
+    .logtitle { font-weight:600; margin:.5rem 0 .25rem; }
     tr.chg td { background:rgba(56,139,253,.10); }
     .cmph { margin:1.75rem 0 .25rem; font-size:1.1rem; }
     .mono { font-family:ui-monospace,monospace; font-size:.9rem; }
-    .add { color:var(--info); }
-    .rem { color:var(--mut); text-decoration:line-through; }
+    .hash { overflow-wrap:anywhere; }
+    .only { background:color-mix(in srgb, var(--warn) 28%, transparent); border-radius:3px; padding:0 .2rem; }
     td details > summary { cursor:pointer; color:var(--mut); }
-    .pill { display:inline-block; padding:.1rem .5rem; border-radius:999px; font-size:.9rem;
-            background:var(--pan); border:1px solid var(--bd); }
   </style>
 </head>
 <body>
   <header>
     <h1>SSH Security Auditor
-      <a href="/claude.html">Conectar con Claude</a>
+      <a href="/claude.html">Connect with Claude</a>
     </h1>
+    <label class="me">Your name
+      <input id="engineer" placeholder="optional, shown on scans and uploads" autocomplete="name">
+    </label>
+    <button class="sec small" id="themeBtn" type="button">Light mode</button>
   </header>
   <main>
-    <details class="step" open>
-      <summary>Paso 1 · Objetivo</summary>
+    <details class="step s1" open>
+      <summary>Step 1 · Target</summary>
       <div>
         <div class="row">
-          <div><label>Nombre / identificador</label><input id="name" placeholder="lab-01"></div>
-          <div><label>IP o FQDN</label><input id="host" placeholder="10.0.0.5"></div>
+          <div><label for="name">Name / identifier</label><input id="name" placeholder="lab-01"></div>
+          <div><label for="host">IP or FQDN</label><input id="host" placeholder="10.0.0.5"></div>
         </div>
         <div class="row">
-          <div><label>Puerto SSH</label><input id="port" type="number" value="22"></div>
-          <div><label>Perfil de dispositivo</label><select id="profile"></select></div>
+          <div><label for="port">SSH port</label><input id="port" type="number" value="22"></div>
+          <div>
+            <label for="profile">Device profile</label>
+            <select id="profile"></select>
+            <div class="itemmeta muted" id="profileMeta"></div>
+            <div class="tools" data-kind="profiles">
+              <button class="sec small" data-act="download">Download</button>
+              <button class="sec small" data-act="example">Download example</button>
+              <button class="sec small" data-act="upload">Upload…</button>
+              <button class="sec small danger" data-act="delete" hidden>Delete</button>
+              <input type="file" accept=".yaml,.yml" hidden>
+            </div>
+            <div class="muted" id="profileMsg"></div>
+          </div>
         </div>
       </div>
     </details>
 
-    <details class="step">
-      <summary>Paso 2 · Credenciales</summary>
+    <details class="step s2">
+      <summary>Step 2 · Credentials</summary>
       <div>
-        <p class="muted">En la Fase 1 solo se ejecutan pruebas sin autenticar (negociación e
-        inventario de red). El login llega en la Fase 3; aquí aparecerá el botón
-        <strong>Guardar</strong> para recordar la contraseña en este navegador.</p>
+        <p class="muted">Phase 1 only runs unauthenticated tests (negotiation and network
+        inventory). Login arrives in Phase 3; a <strong>Save</strong> button will appear here
+        to remember the password in this browser.</p>
       </div>
     </details>
 
-    <details class="step" open>
-      <summary>Paso 3 · Pruebas</summary>
+    <details class="step s3" open>
+      <summary>Step 3 · Tests</summary>
       <div>
+        <div class="row">
+          <div>
+            <label for="policy">Policy</label>
+            <select id="policy"></select>
+            <div class="itemmeta muted" id="policyMeta"></div>
+            <div class="tools" data-kind="policies">
+              <button class="sec small" data-act="download">Download</button>
+              <button class="sec small" data-act="example">Download example</button>
+              <button class="sec small" data-act="upload">Upload…</button>
+              <button class="sec small danger" data-act="delete" hidden>Delete</button>
+              <input type="file" accept=".yaml,.yml" hidden>
+            </div>
+            <div class="muted" id="policyMsg"></div>
+          </div>
+        </div>
         <div class="bar">
-          <label style="margin:0"><input type="checkbox" id="selall"> Seleccionar todo</label>
-          <span class="pill">Política: <select id="policy" style="width:auto;border:0;background:transparent"></select></span>
+          <label style="margin:0"><input type="checkbox" id="selall" style="width:auto"> Select all</label>
         </div>
         <div class="tests" id="tests"></div>
       </div>
     </details>
 
-    <details class="step" open>
-      <summary>Paso 4 · Ejecución y resultados</summary>
+    <details class="step s4" open>
+      <summary>Step 4 · Run and results</summary>
       <div>
         <div class="bar">
-          <button id="run">Ejecutar análisis</button>
-          <button class="sec" id="exportJson" disabled>Exportar JSON</button>
-          <button class="sec" id="exportHtml" disabled>Exportar HTML</button>
-          <button class="sec" id="exportCsv" disabled>Exportar CSV</button>
+          <button id="run">Run scan</button>
+          <button class="sec" id="exportJson" disabled>Export JSON</button>
+          <button class="sec" id="exportHtml" disabled>Export HTML</button>
+          <button class="sec" id="exportCsv" disabled>Export CSV</button>
+          <button class="sec danger" id="clearResults" disabled>Clear results</button>
         </div>
         <div id="status" class="muted"></div>
         <div id="log" hidden></div>
         <div id="results"></div>
         <hr style="margin:1.5rem 0;border:0;border-top:1px solid var(--bd)">
-        <h3 style="font-size:1.2rem">Comparar con una exportación</h3>
-        <p class="muted">Carga un JSON exportado antes y se compara con el análisis actual.</p>
+        <h3 style="font-size:1.2rem">Compare with an export</h3>
+        <p class="muted">Load a JSON exported earlier and it is compared with the current scan.</p>
         <div class="bar">
           <input type="file" id="cmpFile" accept="application/json" style="width:auto">
-          <button class="sec" id="cmpBtn" disabled>Comparar</button>
+          <button class="sec" id="cmpBtn" disabled>Compare</button>
         </div>
         <div id="compare"></div>
       </div>
     </details>
+
+    <details class="step s5" open>
+      <summary>Step 5 · Compare two devices</summary>
+      <div>
+        <p class="muted">Scans both devices now, with the profile, policy and tests chosen
+        above, and compares device B against device A.</p>
+        <div class="row">
+          <div><label for="hostA">Device A — IP or FQDN</label>
+            <input id="hostA" placeholder="empty = the Step 1 target"></div>
+          <div><label for="hostB">Device B — IP or FQDN</label>
+            <input id="hostB" placeholder="10.0.0.6"></div>
+        </div>
+        <div class="row">
+          <div><label for="portA">Device A — SSH port</label>
+            <input id="portA" type="number" placeholder="empty = the Step 1 port"></div>
+          <div><label for="portB">Device B — SSH port</label>
+            <input id="portB" type="number" value="22"></div>
+        </div>
+        <div class="bar">
+          <button id="liveRun">Scan both and compare</button>
+          <button class="sec" id="liveExportA" disabled>Export A (JSON)</button>
+          <button class="sec" id="liveExportB" disabled>Export B (JSON)</button>
+        </div>
+        <div id="liveStatus" class="muted"></div>
+        <div class="row" id="liveLogs" hidden>
+          <div><div class="logtitle" id="logTitleA"></div><pre id="logA" class="log"></pre></div>
+          <div><div class="logtitle" id="logTitleB"></div><pre id="logB" class="log"></pre></div>
+        </div>
+        <div id="liveCompare"></div>
+      </div>
+    </details>
   </main>
+  <script src="/theme.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

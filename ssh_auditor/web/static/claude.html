@@ -1,62 +1,74 @@
 <!doctype html>
-<html lang="es">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Conectar con Claude — SSH Security Auditor</title>
+  <title>Connect with Claude — SSH Security Auditor</title>
+  <script>
+    // Dark by default; apply a saved "light" choice before the page paints.
+    try { if (localStorage.getItem("sshAuditor.theme") === "light") document.documentElement.dataset.theme = "light"; } catch (_) {}
+  </script>
   <style>
-    :root { color-scheme:dark; }
-    body { font-family:system-ui,-apple-system,sans-serif; margin:0; color:#e6edf3; background:#0d1117;
+    :root { color-scheme:dark; --fg:#e6edf3; --mut:#9198a1; --bd:#30363d; --bg:#0d1117;
+            --pan:#161b22; --btn:#21262d; --link:#58a6ff; --note:#2d2410; --notebd:#9e6a03; }
+    :root[data-theme="light"] { color-scheme:light; --fg:#1f2328; --mut:#59636e; --bd:#d0d7de;
+            --bg:#ffffff; --pan:#f6f8fa; --btn:#f6f8fa; --link:#0969da; --note:#fff8c5; --notebd:#d4a72c; }
+    body { font-family:system-ui,-apple-system,sans-serif; margin:0; color:var(--fg); background:var(--bg);
            line-height:1.6; }
-    header { background:#161b22; border-bottom:1px solid #30363d; padding:1rem 1.5rem; }
-    header a { color:#58a6ff; text-decoration:none; font-size:1rem; }
+    header { background:var(--pan); border-bottom:1px solid var(--bd); padding:1rem 1.5rem;
+             display:flex; justify-content:space-between; align-items:center; }
+    header a { color:var(--link); text-decoration:none; font-size:1rem; }
+    header button { background:var(--btn); color:var(--fg); border:1px solid var(--bd); border-radius:6px;
+                    padding:.3rem .7rem; font-size:.95rem; cursor:pointer; }
     main { max-width:820px; margin:0 auto; padding:1.5rem; }
     h1 { font-size:1.6rem; } h2 { font-size:1.25rem; margin-top:2rem; }
     code, pre { font-family:ui-monospace,monospace; }
-    pre { background:#161b22; border:1px solid #30363d; border-radius:8px; padding:.8rem 1rem;
+    pre { background:var(--pan); border:1px solid var(--bd); border-radius:8px; padding:.8rem 1rem;
           overflow:auto; position:relative; }
     .copy { position:absolute; top:.5rem; right:.5rem; font-size:.9rem; cursor:pointer;
-            background:#21262d; color:#e6edf3; border:1px solid #30363d; border-radius:6px; padding:.2rem .5rem; }
-    .note { background:#2d2410; border:1px solid #9e6a03; border-radius:8px; padding:.8rem 1rem;
+            background:var(--btn); color:var(--fg); border:1px solid var(--bd); border-radius:6px; padding:.2rem .5rem; }
+    .note { background:var(--note); border:1px solid var(--notebd); border-radius:8px; padding:.8rem 1rem;
             font-size:1rem; }
-    .muted { color:#9198a1; font-size:1rem; }
+    .muted { color:var(--mut); font-size:1rem; }
   </style>
 </head>
 <body>
-  <header><a href="/">← Volver al auditor</a></header>
+  <header><a href="/">← Back to the auditor</a><button id="themeBtn" type="button">Light mode</button></header>
   <main>
-    <h1>Conectar con Claude (MCP)</h1>
-    <p class="muted">Dirección de este servidor: <code id="base"></code></p>
+    <h1>Connect with Claude (MCP)</h1>
+    <p class="muted">This server's address: <code id="base"></code></p>
 
     <div class="note">
-      El servidor MCP llega en la <strong>Fase 2</strong>. Esta página ya muestra cómo se
-      conectará; el endpoint <code>/mcp</code> aún no responde.
+      The MCP server arrives in <strong>Phase 2</strong>. This page already shows how to
+      connect; the <code>/mcp</code> endpoint does not answer yet.
     </div>
 
     <h2>Claude Code</h2>
-    <p>Ejecuta este comando en la terminal, dentro del proyecto donde quieras usarlo:</p>
-    <pre><button class="copy" data-t="cmd">copiar</button><code id="cmd"></code></pre>
+    <p>Run this command in a terminal, inside the project where you want to use it:</p>
+    <pre><button class="copy" data-t="cmd">copy</button><code id="cmd"></code></pre>
 
     <h2>Claude Desktop</h2>
-    <p>Descarga el paquete <code>.mcpb</code> (lo generará el servidor en la Fase 2) e instálalo
-    con doble clic. Contendrá un puente local hacia esta dirección, necesario porque los
-    conectores remotos de Claude no alcanzan la red interna.</p>
+    <p>Download the <code>.mcpb</code> bundle (the server will generate it in Phase 2) and
+    install it with a double click. It holds a local bridge to this address, needed because
+    Claude's remote connectors can't reach the internal network.</p>
 
-    <h2>Ejemplos de uso desde Claude</h2>
+    <h2>Examples from Claude</h2>
     <ul class="muted">
-      <li>«Audita la negociación SSH de 10.0.0.5 con el perfil generico.»</li>
-      <li>«Compara el último análisis de 10.0.0.5 con este JSON que te paso.»</li>
-      <li>«Lista las pruebas disponibles y su nivel de impacto.»</li>
+      <li>"Audit the SSH negotiation of 10.0.0.5 with the generic profile."</li>
+      <li>"Compare the last scan of 10.0.0.5 with this JSON I'm giving you."</li>
+      <li>"List the available tests and their impact level."</li>
     </ul>
   </main>
+  <script src="/theme.js"></script>
   <script>
     const base = window.location.origin;
     document.getElementById("base").textContent = base;
     document.getElementById("cmd").textContent =
       `claude mcp add --transport http ssh-auditor ${base}/mcp`;
+    setupThemeButton(document.getElementById("themeBtn"));
     document.querySelectorAll(".copy").forEach((b) => b.addEventListener("click", () => {
       const t = document.getElementById(b.dataset.t).textContent;
-      navigator.clipboard.writeText(t).then(() => { b.textContent = "copiado"; });
+      navigator.clipboard.writeText(t).then(() => { b.textContent = "copied"; });
     }));
   </script>
 </body>

@@ -12,7 +12,7 @@ async def test_run_scan_negotiation(ssh_server):
     cache = TTLCache(ttl_s=60)
     events = []
     req = ScanRequest(
-        target_host=host, port=port, profile="generico",
+        target_host=host, port=port, profile="generic",
         tests=["connectivity", "negotiation"], policy="base",
     )
     sr = await run_scan(req, policy={}, tool_version="0.1.0", limit=4,
