@@ -36,39 +36,71 @@
   <header><a href="/">← Back to the auditor</a><button id="themeBtn" type="button">Light mode</button></header>
   <main>
     <h1>Connect with Claude (MCP)</h1>
-    <p class="muted">This server's address: <code id="base"></code></p>
-
-    <div class="note">
-      The MCP server arrives in <strong>Phase 2</strong>. This page already shows how to
-      connect; the <code>/mcp</code> endpoint does not answer yet.
-    </div>
+    <p class="muted">MCP endpoint of this server: <code id="url"></code></p>
 
     <h2>Claude Code</h2>
-    <p>Run this command in a terminal, inside the project where you want to use it:</p>
+    <p>Run this in a terminal, inside the project where you want to use it:</p>
     <pre><button class="copy" data-t="cmd">copy</button><code id="cmd"></code></pre>
+    <p>Or share it with everyone on a project: download <a href="/claude/mcp.json" download>mcp.json</a>
+    and save it as <code>.mcp.json</code> in the project root.</p>
 
     <h2>Claude Desktop</h2>
-    <p>Download the <code>.mcpb</code> bundle (the server will generate it in Phase 2) and
-    install it with a double click. It holds a local bridge to this address, needed because
-    Claude's remote connectors can't reach the internal network.</p>
+    <ol>
+      <li>Download <a href="/claude/ssh-auditor.mcpb" download>ssh-auditor.mcpb</a>.</li>
+      <li>Open it with a double click, or drag it onto <em>Settings → Extensions</em> in
+        Claude Desktop, and choose <em>Install</em>.</li>
+      <li>The server URL comes filled in with this address. Change it only if engineers
+        reach the server by another name.</li>
+    </ol>
+    <div class="note">
+      Don't add this server as a <em>custom connector</em>: those connect from Anthropic's
+      cloud and can't reach the internal network. The <code>.mcpb</code> runs a small
+      bridge on your own computer, inside the network, using the Node.js that Claude
+      Desktop ships with. If your organization restricts extensions, an admin has to
+      allow it first.
+    </div>
 
-    <h2>Examples from Claude</h2>
+    <h2>What Claude can do</h2>
+    <ul>
+      <li><code>list_tests</code>, <code>list_profiles</code>: the tests, device profiles and policies.</li>
+      <li><code>start_scan</code>, <code>get_scan</code>, <code>cancel_scan</code>: run a scan and follow it.</li>
+      <li><code>compare_scans</code>: compare two scans by id, or against a JSON export.</li>
+    </ul>
+    <p class="muted">The server applies the target allowlist and each device profile's limits
+    to every request, from the web or from Claude; Claude can't go past them. Tests with
+    medium or high impact also need an explicit confirmation.</p>
+
+    <h2>Examples</h2>
     <ul class="muted">
       <li>"Audit the SSH negotiation of 10.0.0.5 with the generic profile."</li>
-      <li>"Compare the last scan of 10.0.0.5 with this JSON I'm giving you."</li>
+      <li>"Compare that scan with the previous one and tell me what got worse."</li>
+      <li>"Compare the scan of 10.0.0.5 with this JSON export I'm giving you."</li>
       <li>"List the available tests and their impact level."</li>
     </ul>
   </main>
   <script src="/theme.js"></script>
   <script>
-    const base = window.location.origin;
-    document.getElementById("base").textContent = base;
-    document.getElementById("cmd").textContent =
-      `claude mcp add --transport http ssh-auditor ${base}/mcp`;
+    const url = `${window.location.origin}/mcp`;
+    document.getElementById("url").textContent = url;
+    document.getElementById("cmd").textContent = `claude mcp add --transport http ssh-auditor ${url}`;
     setupThemeButton(document.getElementById("themeBtn"));
+    function copyText(text) {
+      // navigator.clipboard only exists on HTTPS or localhost; this server is plain HTTP.
+      if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
+      const area = document.createElement("textarea");
+      area.value = text;
+      area.style.position = "fixed";
+      area.style.opacity = "0";
+      document.body.appendChild(area);
+      area.select();
+      const ok = document.execCommand("copy");
+      area.remove();
+      return ok ? Promise.resolve() : Promise.reject(new Error("copy failed"));
+    }
     document.querySelectorAll(".copy").forEach((b) => b.addEventListener("click", () => {
       const t = document.getElementById(b.dataset.t).textContent;
-      navigator.clipboard.writeText(t).then(() => { b.textContent = "copied"; });
+      copyText(t).then(() => { b.textContent = "copied"; },
+                       () => { b.textContent = "select it and copy"; });
     }));
   </script>
 </body>

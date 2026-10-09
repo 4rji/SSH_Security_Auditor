@@ -9,6 +9,7 @@ dependencies = [
     "uvicorn[standard]>=0.54",
     "pydantic>=2.13",
     "pyyaml>=6.0",
+    "mcp>=2.3",
 ]
 
 [project.optional-dependencies]
@@ -22,3 +23,6 @@ python_classes = ["*Tests"]
 
 [tool.setuptools.packages.find]
 include = ["ssh_auditor*"]
+
+[tool.setuptools.package-data]
+ssh_auditor = ["web/static/*", "examples/*.yaml", "mcp/bridge/*.js"]

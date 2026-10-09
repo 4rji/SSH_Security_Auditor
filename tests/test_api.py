@@ -153,3 +153,30 @@ async def test_two_devices_scanned_and_compared_by_id(ssh_server):
     assert neg["enc_s2c"]["after"] == ["aes256-gcm@openssh.com", "aes128-ctr"]
     fp = {i["key"]: i["change"] for i in neg["host_key_fingerprints"]["items"]}
     assert fp["ssh-ed25519"] == "Changed"
+
+
+@pytest.mark.asyncio
+async def test_rest_enforces_the_same_limits():
+    app = _app(["127.0.0.0/8"])
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://t") as c:
+        r = await c.post("/api/v1/scans", json={
+            "target_host": "127.0.0.1", "tests": ["connectivity"], "concurrency": 99,
+        })
+        assert r.status_code == 422 and "exceeds" in r.json()["detail"]
+        r = await c.post("/api/v1/scans", json={"target_host": "127.0.0.1", "tests": ["bogus"]})
+        assert r.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_invalid_request_fields_get_a_readable_message():
+    app = _app(["127.0.0.0/8"])
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://t") as c:
+        r = await c.post("/api/v1/scans", json={
+            "target_host": "127.0.0.1", "port": 70000, "tests": ["connectivity"],
+        })
+        assert r.status_code == 422
+        detail = r.json()["detail"]
+        # The web shows `detail` as is; a list would read "[object Object]".
+        assert isinstance(detail, str) and "port" in detail and "65535" in detail

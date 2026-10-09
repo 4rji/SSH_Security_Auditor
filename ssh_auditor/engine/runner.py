@@ -53,13 +53,13 @@ async def _run_one(test_id: str, ctx: Context, sem: asyncio.Semaphore) -> TestRe
 
 async def run_scan(
     req: ScanRequest, policy: dict, tool_version: str, limit: int,
-    cache: TTLCache, on_event=None,
+    cache: TTLCache, on_event=None, scan_id: str | None = None,
 ) -> ScanResult:
     def emit(ev: dict) -> None:
         if on_event:
             on_event(ev)
 
-    scan_id = uuid.uuid4().hex
+    scan_id = scan_id or uuid.uuid4().hex
     started = datetime.now(timezone.utc)
     emit({"type": "started", "scan_id": scan_id, "tests": list(req.tests)})
     sem = _LIMITS.semaphore(req.target_host, limit)

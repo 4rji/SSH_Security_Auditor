@@ -6,3 +6,4 @@ fastapi==0.142.4
 uvicorn[standard]==0.54.0
 pydantic==2.13.5
 PyYAML==6.0.3
+mcp==2.3.0

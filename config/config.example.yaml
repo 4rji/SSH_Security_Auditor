@@ -5,6 +5,8 @@ listen_port: 7284
 allow_networks:
   - 0.0.0.0/0
 cache_ttl_s: 86400
+# Scans Claude may run at the same time (MCP runs them in the background).
+max_active_scans: 10
 # Built-in profiles and policies (read-only).
 policies_dir: config/policies
 profiles_dir: config/profiles

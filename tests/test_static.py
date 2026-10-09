@@ -14,3 +14,11 @@ def test_static_files_reference_api():
         text = (base / page).read_text()
         assert "sshAuditor.theme" in text and "/theme.js" in text
     assert "run_by" in js
+    claude = (base / "claude.html").read_text()
+    assert "/claude/ssh-auditor.mcpb" in claude and "/claude/mcp.json" in claude
+    assert "claude mcp add --transport http ssh-auditor" in claude
+    assert "Phase 2" not in claude  # the page no longer says the MCP is coming
+    # Port fields refuse what the server would reject anyway.
+    assert idx.count('min="1" max="65535"') == 3
+    # navigator.clipboard only exists on HTTPS or localhost; the server is plain HTTP.
+    assert "execCommand" in claude

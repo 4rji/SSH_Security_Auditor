@@ -2,22 +2,29 @@ from __future__ import annotations
 
 import asyncio
 import json
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Header, HTTPException, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse, Response, StreamingResponse
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import (
+    HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response,
+    StreamingResponse,
+)
 from fastapi.staticfiles import StaticFiles
+from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import BaseModel
 
 import ssh_auditor.plugins  # noqa: F401  (registers the plugins)
 from ssh_auditor.compare import compare
-from ssh_auditor.config import Config, target_allowed
-from ssh_auditor.engine.cache import TTLCache
-from ssh_auditor.engine.runner import run_scan
+from ssh_auditor.config import Config
 from ssh_auditor.export import from_json, to_csv, to_html, to_json
+from ssh_auditor.mcp.bundle import build_mcpb, mcp_json
+from ssh_auditor.mcp.server import build_mcp
 from ssh_auditor.models import ScanRequest, ScanResult
 from ssh_auditor.plugins.base import catalog
-from ssh_auditor.store import NOUN, Store, StoreError, example_text, parse
+from ssh_auditor.service import Admitted, AuditService, ScanRejected
+from ssh_auditor.store import NOUN, StoreError, example_text, parse
 
 TOOL_VERSION = "0.1.0"
 _STATIC = Path(__file__).parent / "static"
@@ -34,18 +41,34 @@ def _yaml_download(text: str, filename: str) -> Response:
 
 
 def create_app(cfg: Config) -> FastAPI:
-    app = FastAPI(title="SSH Security Auditor", version=TOOL_VERSION)
-    cache = TTLCache(ttl_s=cfg.cache_ttl_s)
-    stores = {
-        "profiles": Store("profiles", cfg.profiles_dir, cfg.custom_dir or None),
-        "policies": Store("policies", cfg.policies_dir, cfg.custom_dir or None),
-    }
+    service = AuditService(cfg, TOOL_VERSION)
+    cache, stores = service.cache, service.stores
+    mcp = build_mcp(service)
+    mcp_app = mcp.streamable_http_app(
+        streamable_http_path="/mcp", stateless_http=True, json_response=True,
+        # Internal network without a token (spec §10): the same exposure as the REST
+        # API, so no Host/Origin allowlist. Engineers reach the server by IP or by name.
+        transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
+    )
 
-    def _load(kind: str, item_id: str):
-        try:
-            return stores[kind].load(item_id)
-        except StoreError as e:
-            raise HTTPException(status_code=e.status, detail=e.detail) from e
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        # Starlette never runs a mounted app's lifespan; the host app starts the manager.
+        async with mcp.session_manager.run():
+            yield
+
+    app = FastAPI(title="SSH Security Auditor", version=TOOL_VERSION, lifespan=lifespan)
+    app.router.routes.extend(mcp_app.routes)  # /mcp, ahead of the static catch-all
+
+    @app.exception_handler(RequestValidationError)
+    async def readable_validation_error(_request: Request, exc: RequestValidationError):
+        # One line per field ("port: Input should be ..."): the web shows `detail` as is,
+        # and FastAPI's default is a list of objects.
+        parts = []
+        for err in exc.errors():
+            loc = ".".join(str(p) for p in err.get("loc", ()) if p != "body")
+            parts.append(f"{loc}: {err.get('msg', '')}" if loc else err.get("msg", ""))
+        return JSONResponse(status_code=422, content={"detail": "; ".join(parts)})
 
     @app.get("/api/v1/tests")
     async def tests():
@@ -110,38 +133,26 @@ def create_app(cfg: Config) -> FastAPI:
 
     # --- scans ------------------------------------------------------------------------
 
-    def _guard(host: str) -> None:
-        if not target_allowed(cfg, host):
-            raise HTTPException(
-                status_code=403,
-                detail=f"Target outside the allowlist, or the allowlist is empty: {host}",
-            )
-
-    def _scan_inputs(req: ScanRequest) -> tuple[dict, int]:
-        policy = _load("policies", req.policy).model_dump()
-        profile = _load("profiles", req.profile)
-        return policy, profile.limits.max_concurrency
+    def _admit(req: ScanRequest) -> Admitted:
+        try:
+            return service.admit(req)
+        except ScanRejected as e:
+            raise HTTPException(status_code=e.status, detail=e.detail) from e
 
     @app.post("/api/v1/scans")
     async def start_scan(req: ScanRequest):
-        _guard(req.target_host)
-        policy, limit = _scan_inputs(req)
-        sr = await run_scan(req, policy=policy, tool_version=TOOL_VERSION,
-                            limit=limit, cache=cache)
-        return sr
+        return await service.run(_admit(req))
 
     @app.post("/api/v1/scans/stream")
     async def start_scan_stream(req: ScanRequest):
-        _guard(req.target_host)
-        policy, limit = _scan_inputs(req)
+        adm = _admit(req)
         queue: asyncio.Queue = asyncio.Queue()
 
         def on_event(ev: dict) -> None:
             queue.put_nowait(ev)
 
         async def worker():
-            sr = await run_scan(req, policy=policy, tool_version=TOOL_VERSION,
-                                limit=limit, cache=cache, on_event=on_event)
+            sr = await service.run(adm, on_event=on_event)
             queue.put_nowait({"type": "result", "result": json.loads(to_json(sr))})
             queue.put_nowait(None)
 
@@ -211,6 +222,31 @@ def create_app(cfg: Config) -> FastAPI:
         except Exception as e:  # noqa: BLE001
             raise HTTPException(status_code=422, detail=f"Invalid JSON: {e}")
         return sr
+
+    # --- "Connect with Claude" ----------------------------------------------------------
+
+    def _mcp_url(request: Request) -> str:
+        # The address the engineer used to open the page, so it works by IP or by name.
+        return str(request.base_url).rstrip("/") + "/mcp"
+
+    @app.get("/claude", include_in_schema=False)
+    async def claude_page():
+        return RedirectResponse("/claude.html")
+
+    @app.get("/claude/mcp.json", include_in_schema=False)
+    async def claude_mcp_json(request: Request):
+        return Response(json.dumps(mcp_json(_mcp_url(request)), indent=2) + "\n",
+                        media_type="application/json",
+                        headers={"Content-Disposition": 'attachment; filename="mcp.json"'})
+
+    @app.get("/claude/ssh-auditor.mcpb", include_in_schema=False)
+    async def claude_mcpb(request: Request):
+        tools = [{"name": t.name, "description": (t.description or "").strip().split("\n")[0]}
+                 for t in await mcp.list_tools()]
+        return Response(build_mcpb(_mcp_url(request), TOOL_VERSION, tools),
+                        media_type="application/zip",
+                        headers={"Content-Disposition":
+                                 'attachment; filename="ssh-auditor.mcpb"'})
 
     if _STATIC.exists():
         app.mount("/", StaticFiles(directory=str(_STATIC), html=True), name="static")

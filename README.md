@@ -4,17 +4,30 @@ Internal tool to audit the SSH posture of routers and other network devices:
 negotiation (algorithms, host keys, Terrapin, post-quantum KEX, FIPS-oriented path,
 authentication methods) and — in later phases — authentication, effective `sshd`
 configuration, yescrypt and concurrency. Scan results live in the browser and in the
-exports, never on the server. Reachable from the web and from Claude (MCP, Phase 2).
+exports, never on the server. Reachable from the web and from Claude (MCP).
 
 For use on the **internal network** only, against **authorised devices** (mandatory
 allowlist).
 
 ## Status
 
-Phase 1 is implemented: plugin engine, connectivity and negotiation tests (no login),
-API, 4-step web UI with live progress, JSON/HTML/CSV export, detailed comparison of two
-runs, and shared device profiles and policies. The full plan is in
-`docs/superpowers/plans/` and `instrucciones.md`.
+Phases 1 and 2 are implemented: plugin engine, connectivity and negotiation tests (no
+login), API, 4-step web UI with live progress, JSON/HTML/CSV export, detailed comparison
+of two runs, shared device profiles and policies, and an MCP server for Claude Code and
+Claude Desktop. The full plan is in `docs/superpowers/plans/` and `instrucciones.md`.
+
+## Using it from Claude (MCP)
+
+The MCP server runs in the same process and port as the web: `http://<server>:7284/mcp`
+(Streamable HTTP, no token). The page `http://<server>:7284/claude` has the
+`claude mcp add` command for Claude Code, a `.mcp.json` to download, and a `.mcpb`
+bundle for Claude Desktop (a local stdio→HTTP bridge, because Claude's remote connectors
+can't reach the internal network).
+
+Tools: `list_tests`, `list_profiles`, `start_scan`, `get_scan`, `cancel_scan`,
+`compare_scans`. The server applies the allowlist, the profile limits and the
+`confirm_impact` rule to every request, from the web or from Claude.
+`max_active_scans` in `config.yaml` caps the scans Claude runs in the background.
 
 ## Profiles and policies
 

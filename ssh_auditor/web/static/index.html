@@ -94,7 +94,7 @@
           <div><label for="host">IP or FQDN</label><input id="host" placeholder="10.0.0.5"></div>
         </div>
         <div class="row">
-          <div><label for="port">SSH port</label><input id="port" type="number" value="22"></div>
+          <div><label for="port">SSH port</label><input id="port" type="number" min="1" max="65535" value="22"></div>
           <div>
             <label for="profile">Device profile</label>
             <select id="profile"></select>
@@ -183,9 +183,9 @@
         </div>
         <div class="row">
           <div><label for="portA">Device A — SSH port</label>
-            <input id="portA" type="number" placeholder="empty = the Step 1 port"></div>
+            <input id="portA" type="number" min="1" max="65535" placeholder="empty = the Step 1 port"></div>
           <div><label for="portB">Device B — SSH port</label>
-            <input id="portB" type="number" value="22"></div>
+            <input id="portB" type="number" min="1" max="65535" value="22"></div>
         </div>
         <div class="bar">
           <button id="liveRun">Scan both and compare</button>

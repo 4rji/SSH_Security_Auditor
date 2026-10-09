@@ -15,6 +15,8 @@ class Config:
     listen_port: int = 7284
     allow_networks: list[str] = field(default_factory=list)
     cache_ttl_s: int = 86400
+    # Background scans (started from MCP) that may run at the same time.
+    max_active_scans: int = 10
     policies_dir: str = "config/policies"
     profiles_dir: str = "config/profiles"
     # Writable directory for the profiles and policies engineers upload (shared by all).

@@ -39,14 +39,21 @@ class TestResult(BaseModel):
 
 
 class ScanRequest(BaseModel):
-    target_host: str
-    port: int = 22
+    target_host: str = Field(min_length=1, max_length=253)
+    port: int = Field(22, ge=1, le=65535)
     profile: str = "generic"
     tests: list[str] = Field(default_factory=list)
-    policy: str = "base"
+    # Empty = the device profile's own policy.
+    policy: str = ""
     params: dict = Field(default_factory=dict)
     # Optional name of the engineer who runs the scan (the "Your name" field).
     run_by: str = Field("", max_length=80)
+    # Connections this scan may open at once. Empty = the profile's limit; above it the
+    # server rejects the request, whether it comes from the web or from MCP. Phase 4
+    # concurrency tests read it.
+    concurrency: int | None = Field(None, ge=1)
+    # Tests with medium or high impact only run with this set explicitly.
+    confirm_impact: bool = False
 
 
 class ScanResult(BaseModel):
