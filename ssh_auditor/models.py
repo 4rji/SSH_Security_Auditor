@@ -119,6 +119,19 @@ class TestResult(BaseModel):
     impact: str
 
 
+class LoadParams(BaseModel):
+    """Per-run parameters for the concurrency_bounded test (Phase 4).
+
+    concurrency (max connections in flight) stays in ScanRequest.concurrency; the
+    service validates these against the profile and fills the iterations default."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    iterations: int | None = Field(None, ge=1)
+    error_rate_pct: int = Field(10, ge=0, le=100)
+    p95_factor: float = Field(3.0, ge=1.0, le=100.0)
+
+
 class ScanRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 

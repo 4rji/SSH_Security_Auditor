@@ -16,7 +16,7 @@ from typing import Any, AsyncIterator
 import asyncssh
 
 from ssh_auditor.models import AuthMethod, Credentials, Evidence, Finding, Status
-from ssh_auditor.plugins.base import Context, Meta, register
+from ssh_auditor.plugins.base import Context, Meta, connection_slot, register
 
 CONNECT_TIMEOUT_S = 10.0
 COMMAND_TIMEOUT_S = 10.0
@@ -179,8 +179,9 @@ async def _open_with_method(
     else:
         raise CredentialUnavailable("Choose an authentication method for this test.")
 
-    async with asyncssh.connect(**options) as connection:
-        yield connection
+    async with connection_slot(ctx):
+        async with asyncssh.connect(**options) as connection:
+            yield connection
 
 
 @asynccontextmanager

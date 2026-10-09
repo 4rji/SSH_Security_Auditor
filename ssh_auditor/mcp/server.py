@@ -142,6 +142,7 @@ def build_mcp(service: AuditService) -> MCPServer:
                          # ScanRequest validates it below with inputs hidden.
                          credentials: McpCredentialsInput = None,
                          concurrency: int | None = None,
+                         load: dict | None = None,
                          confirm_impact: bool = False) -> dict[str, Any]:
         """Start a scan in the background and return its scan_id at once; follow it
         with get_scan.
@@ -156,13 +157,17 @@ def build_mcp(service: AuditService) -> MCPServer:
         private_key, certificate, private_key_passphrase?}; or
         {method: "keyboard_interactive", username, keyboard_interactive_responses[]}.
         Secrets never appear in get_scan or exports.
-        concurrency: optional, never above the profile's limit. confirm_impact: true
-        only after the engineer agreed to run medium or high impact tests.
+        concurrency: optional max connections in flight, never above the profile's
+        limit; it also caps the concurrency_bounded test. load: optional parameters for
+        concurrency_bounded — {iterations?, error_rate_pct?, p95_factor?}; iterations
+        defaults to min(50, the profile's max_connections). confirm_impact: true only
+        after the engineer agreed to run medium or high impact tests.
         """
         try:
             req = ScanRequest(target_host=target_host, port=port, profile=profile,
                               target_name=target_name, model=model, firmware=firmware,
                               tags=tags or [], tests=tests, policy=policy, run_by=run_by,
+                              params={"load": load} if load else {},
                               credentials=(Credentials() if credentials is None
                                            else credentials),
                               concurrency=concurrency, confirm_impact=confirm_impact)

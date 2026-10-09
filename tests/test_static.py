@@ -28,6 +28,8 @@ def test_credentials_ui_can_save_and_forget_per_target():
     base = Path("ssh_auditor/web/static")
     idx = (base / "index.html").read_text()
     js = (base / "app.js").read_text()
+    # The credential store/form moved to the shared module.
+    core = (base / "core.js").read_text()
 
     # The form covers every Phase 3 method and explicitly describes plaintext storage.
     for control in (
@@ -41,14 +43,14 @@ def test_credentials_ui_can_save_and_forget_per_target():
     assert 'id="authPassphrase" type="password"' in idx
 
     # Save/Forget share one versioned localStorage map indexed by normalized host:port.
-    assert 'const CREDENTIALS_KEY = "sshAuditor.credentials.v1"' in js
-    assert "trim().toLowerCase().replace(/\\.$/, \"\")" in js
-    assert "`${normalized}:${parseInt(port || \"22\", 10)}`" in js
-    assert "all[key] = credential" in js
-    assert "delete all[key]" in js
-    assert 'addEventListener("click", saveCredentials)' in js
-    assert 'addEventListener("click", forgetCredentials)' in js
-    # Username-only negative checks travel without requiring another secret.
+    assert 'const CREDENTIALS_KEY = "sshAuditor.credentials.v1"' in core
+    assert "trim().toLowerCase().replace(/\\.$/, \"\")" in core
+    assert "`${normalized}:${parseInt(port || \"22\", 10)}`" in core
+    assert "all[key] = credential" in core
+    assert "delete all[key]" in core
+    assert 'addEventListener("click", saveCredentials)' in core
+    assert 'addEventListener("click", forgetCredentials)' in core
+    # Username-only negative checks travel without requiring another secret (scanBody).
     assert 'credential.method !== "none" || credential.username' in js
     assert "body.credentials = credential" in js
     assert 'data-methods="none password private_key certificate keyboard_interactive"' in idx
@@ -84,3 +86,23 @@ def test_risky_tests_are_grouped_and_locked_until_approved():
     # "Select all" never ticks a locked test.
     assert '.tchk:not(:disabled)' in js
     assert 'const RISKY_IMPACTS = ["medium", "high"]' in js
+
+
+def test_load_testing_page_reuses_core_module():
+    base = Path("ssh_auditor/web/static")
+    assert (base / "core.js").exists()
+    load = (base / "load.html").read_text()
+    assert "core.js" in load and "load.js" in load
+    assert "Load testing" in load
+    # F parameter controls and the run button are present.
+    for control in ("iterations", "errorRatePct", "p95Factor", "runLoad"):
+        assert f'id="{control}"' in load
+    # Both pages share the streaming/render code (no duplicated renderResults).
+    app = (base / "app.js").read_text()
+    loadjs = (base / "load.js").read_text()
+    core = (base / "core.js").read_text()
+    assert "function renderResults" in core
+    assert "function renderResults" not in app and "function renderResults" not in loadjs
+    assert "/core.js" in (base / "index.html").read_text()
+    # The main page links to the load testing page.
+    assert "/load.html" in (base / "index.html").read_text()

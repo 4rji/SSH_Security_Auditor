@@ -140,6 +140,16 @@ class SshdPolicy(_Strict):
         return self
 
 
+class PerformancePolicy(_Strict):
+    """Thresholds for the Phase 4 memory (E) and concurrency (F) tests."""
+
+    hash_cost_mib: int = Field(16, ge=1, le=1024)
+    expected_method: str = Field("yescrypt", max_length=32)
+    login_latency_limit_ms: int = Field(1500, ge=1, le=600_000)
+    mem_warn_fraction: float = Field(0.75, gt=0, le=1)
+    concurrency_success_floor_pct: int = Field(95, ge=0, le=100)
+
+
 class Policy(_Strict):
     id: str
     name: str = ""
@@ -149,6 +159,7 @@ class Policy(_Strict):
     macs: AlgorithmRule = Field(default_factory=AlgorithmRule)
     host_key: AlgorithmRule = Field(default_factory=AlgorithmRule)
     sshd: SshdPolicy = Field(default_factory=SshdPolicy)
+    performance: PerformancePolicy = Field(default_factory=PerformancePolicy)
 
 
 class Limits(_Strict):

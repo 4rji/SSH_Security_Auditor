@@ -18,6 +18,25 @@ from ssh_auditor.store import Store, StoreError
 CONFIRM_IMPACTS = ("medium", "high")
 
 
+def normalize_load_params(raw_load: dict, max_connections: int) -> dict:
+    """Validate the Phase 4 concurrency parameters and fill the iterations default.
+
+    Pure so it can be unit-tested without the whole service. Raises ScanRejected(422)
+    on an invalid value or iterations above the profile's connection limit."""
+    from ssh_auditor.models import LoadParams  # local import avoids a cycle
+
+    try:
+        load = LoadParams.model_validate(raw_load or {})
+    except Exception as exc:  # pydantic ValidationError, etc.
+        raise ScanRejected(422, "Invalid load parameters.") from exc
+    iterations = load.iterations if load.iterations is not None else min(50, max_connections)
+    if iterations > max_connections:
+        raise ScanRejected(
+            422, f"iterations {iterations} exceeds the profile's max_connections "
+                 f"({max_connections}).")
+    return {**load.model_dump(), "iterations": iterations}
+
+
 class ScanRejected(Exception):
     def __init__(self, status: int, detail: str):
         super().__init__(detail)
@@ -75,8 +94,11 @@ class AuditService:
                                     f"profile '{profile.id}' ({limit}).")
         policy_id = req.policy or profile.policy
         policy = self.load("policies", policy_id).model_dump()
+        load = normalize_load_params((req.params or {}).get("load", {}),
+                                     profile.limits.max_connections)
         req = req.model_copy(update={
             "tests": tests, "policy": policy_id, "concurrency": req.concurrency or limit,
+            "params": {**(req.params or {}), "load": load},
         })
         return Admitted(req=req, policy=policy, profile=profile,
                         connect_host=connect_host, limit=limit)

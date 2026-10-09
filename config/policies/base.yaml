@@ -48,3 +48,11 @@ sshd:
       addr: 127.0.0.1
       expected:
         permitrootlogin: "no"
+
+# Fase 4 — umbrales de memoria (E) y concurrencia (F).
+performance:
+  hash_cost_mib: 16
+  expected_method: yescrypt
+  login_latency_limit_ms: 1500
+  mem_warn_fraction: 0.75
+  concurrency_success_floor_pct: 95

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable, Protocol, runtime_checkable
 
@@ -33,6 +35,19 @@ class Context:
     emit: Callable[[str], None]
     credentials: "Credentials | None" = None
     profile: "Profile | None" = None
+    connection_sem: "asyncio.Semaphore | None" = None
+    connection_limit: int = 1
+
+
+@asynccontextmanager
+async def connection_slot(ctx: "Context"):
+    """Hold one host connection slot for the duration of a single SSH connection,
+    so concurrent scans against the same device never exceed the host limit."""
+    if ctx.connection_sem is None:
+        yield
+        return
+    async with ctx.connection_sem:
+        yield
 
 
 @runtime_checkable

@@ -162,79 +162,16 @@ class SshdConfigPlugin:
             )
 
     async def _collect_connected(self, ctx: Context, profile, connection) -> Evidence:
+        from ssh_auditor.plugins.privileged import SkipReason, resolve_sshd
 
-        try:
-            uname = await self._run(connection, "uname -s", 5.0)
-        except Exception as exc:  # noqa: BLE001 - absence of a Linux shell is applicability
-            return _skip(
-                "Could not confirm a Linux shell: "
-                f"{type(exc).__name__}", profile=profile.id,
-            )
-        system = _safe_text(uname.stdout, 80) if uname.exit_status == 0 else ""
-        if uname.truncated or uname.exit_status != 0 or system != "Linux":
-            detail = system or _safe_text(uname.stderr, 120)
-            return _skip(
-                f"Remote shell is not Linux ({detail}); effective sshd configuration "
-                "does not apply.", profile=profile.id,
-            )
+        async def run(command, timeout_s=10.0):
+            return await self._run(connection, command, timeout_s)
 
-        find = await self._run(
-            connection,
-            "PATH=/usr/sbin:/usr/bin:/sbin:/bin "
-            "command -v sshd",
-            5.0,
-        )
-        path = find.stdout.strip().splitlines()[0] if find.stdout.strip() else ""
-        if (find.truncated or find.exit_status != 0 or not path.startswith("/")
-                or any(c.isspace() for c in path)):
-            return _skip(
-                "OpenSSH sshd was not found on the remote Linux system.",
-                profile=profile.id, system=system,
-            )
-
-        binary_stat = await self._run(
-            connection,
-            "PATH=/usr/bin:/bin:/usr/sbin:/sbin "
-            + _command(["stat", "-Lc", "%u\t%a", "--", path]),
-            5.0,
-        )
-        stat_parts = binary_stat.stdout.strip().split("\t")
-        trusted_binary = (
-            binary_stat.exit_status == 0 and not binary_stat.truncated
-            and len(stat_parts) == 2 and stat_parts[0] == "0"
-            and bool(re.fullmatch(r"[0-7]{3,4}", stat_parts[1]))
-            and int(stat_parts[1], 8) & 0o022 == 0
-        )
-        if not trusted_binary:
-            return _skip(
-                "The discovered sshd executable is not a root-owned, non-writable "
-                "system binary; refusing to run it with elevated privileges.",
-                profile=profile.id, system=system, sshd_path=path,
-            )
-
-        version_result = await self._run(connection, _command([path, "-V"]), 5.0)
-        version = _safe_text(f"{version_result.stdout} {version_result.stderr}", 160)
-        if "openssh" not in version.lower():
-            return _skip(
-                f"The remote sshd executable is not OpenSSH ({version}).",
-                profile=profile.id, system=system,
-            )
-
-        uid_result = await self._run(connection, "id -u", 5.0)
-        uid = uid_result.stdout.strip()
-        root = uid_result.exit_status == 0 and uid == "0"
-        prefix = [] if root else ["sudo", "-n", "--"]
-        runner = "root" if root else "sudo-n"
-        if not root:
-            sudo_check = await self._run(
-                connection, _command([*prefix, "true"]), 5.0,
-            )
-            if sudo_check.exit_status != 0 or sudo_check.truncated:
-                return _skip(
-                    "Reading effective sshd configuration requires root or passwordless sudo.",
-                    profile=profile.id, system=system, sshd_path=path,
-                    version=version, runner=runner,
-                )
+        target = await resolve_sshd(run, profile_id=profile.id)
+        if isinstance(target, SkipReason):
+            return _skip(target.reason, profile=profile.id, **target.extra)
+        path, prefix, runner, version, system = (
+            target.path, target.prefix, target.runner, target.version, target.system)
 
         policy = _sshd_policy(ctx.policy)
         base_argv = [*prefix, path, "-T"]

@@ -82,8 +82,10 @@ async def _run_one(test_id: str, ctx: Context, sem: asyncio.Semaphore) -> TestRe
         )
     t0 = time.monotonic()
     try:
-        async with sem:
-            ev = await asyncio.wait_for(plugin.collect(ctx), timeout=plugin.meta.timeout_s)
+        # The host connection cap is now enforced per connection (via ctx.connection_sem),
+        # not per test, so a test like concurrency_bounded can open several connections
+        # under the shared limit. sem is kept in the signature for compatibility.
+        ev = await asyncio.wait_for(plugin.collect(ctx), timeout=plugin.meta.timeout_s)
         findings = plugin.evaluate(ev, ctx.policy)
         status = _rollup(findings)
     except Exception as e:  # noqa: BLE001
@@ -129,6 +131,7 @@ async def run_scan(
             host=concrete_host, port=req.port, policy=policy, params=req.params,
             emit=lambda m: emit({"type": "log", "msg": m}),
             credentials=req.credentials, profile=profile,
+            connection_sem=sem, connection_limit=limit,
         )
         tr = _redact_result(await _run_one(tid, ctx, sem), secrets)
         results.append(tr)
