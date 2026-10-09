@@ -24,12 +24,10 @@ La 3b usa el login de la 3a, así que va después.
 
 ## Pendientes heredados de la Fase 2
 
+Resuelto el 2026-10-09: el paquete se renombró a `ssh_auditor/mcp_server` (ya no tapa al SDK `mcp`); las `instructions` del MCP se generan desde el catálogo de pruebas; hay tests de que cancelar cierra la conexión y no deja resultado, y de que un cliente que se desconecta no detiene el análisis; `pip-audit` sobre los 46 paquetes instalados: sin vulnerabilidades conocidas.
+
+Queda:
+
 - Verificación manual en Claude Code y Claude Desktop (ver `2026-10-08-fase2-mcp.md`, Task 7).
-- Menores de la revisión final:
-  - renombrar `ssh_auditor/mcp`, que tapa al SDK `mcp` si Python se ejecuta con el directorio de trabajo en `ssh_auditor/`;
-  - generar las `instructions` del MCP desde el catálogo de pruebas;
-  - test de que cancelar no deja nada en la caché;
-  - test de desconexión por HTTP.
 - Revisar `allow_networks: 0.0.0.0/0` en `config/config.example.yaml`.
-- Pasar `pip-audit` a las dependencias, incluidas las transitivas de `mcp` (§10).
 - Línea en journald por análisis (§9) y caché con tamaño máximo (§7), pendientes desde la Fase 1.
