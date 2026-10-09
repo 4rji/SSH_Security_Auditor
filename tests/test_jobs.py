@@ -65,7 +65,8 @@ async def test_failed_run_is_reported_as_error():
     sid = jobs.start(["t1"], _fake(fail=True))
     await jobs.wait(sid, 5)
     job = jobs.get(sid)
-    assert job.state == "error" and "boom" in job.error
+    assert job.state == "error" and "RuntimeError" in job.error
+    assert "boom" not in job.error  # exception text may contain credentials
 
 
 @pytest.mark.asyncio

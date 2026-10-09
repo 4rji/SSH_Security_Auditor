@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Callable, Protocol, runtime_checkable
 
 from ssh_auditor.models import Evidence, Finding
+
+if TYPE_CHECKING:
+    from ssh_auditor.models import Credentials
+    from ssh_auditor.store import Profile
 
 
 @dataclass
@@ -15,6 +19,9 @@ class Meta:
     impact: str
     requires_auth: bool
     timeout_s: float
+    privilege: str = "none"
+    credential_method: str = ""
+    actions: tuple[str, ...] = ()
 
 
 @dataclass
@@ -24,6 +31,8 @@ class Context:
     policy: dict
     params: dict
     emit: Callable[[str], None]
+    credentials: "Credentials | None" = None
+    profile: "Profile | None" = None
 
 
 @runtime_checkable

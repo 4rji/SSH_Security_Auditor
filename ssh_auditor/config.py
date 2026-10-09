@@ -46,9 +46,10 @@ def _resolve(host: str) -> list[str]:
         return []
 
 
-def target_allowed(cfg: Config, host: str) -> bool:
+def resolve_allowed_target(cfg: Config, host: str) -> str | None:
+    """Resolve once and return the concrete allowed address used for the scan."""
     if not cfg.allow_networks:
-        return False
+        return None
     nets = [ipaddress.ip_network(n, strict=False) for n in cfg.allow_networks]
     for ip in _resolve(host):
         try:
@@ -56,5 +57,10 @@ def target_allowed(cfg: Config, host: str) -> bool:
         except ValueError:
             continue
         if any(addr in n for n in nets):
-            return True
-    return False
+            return str(addr)
+    return None
+
+
+def target_allowed(cfg: Config, host: str) -> bool:
+    """Compatibility predicate for callers which only need an allow/deny answer."""
+    return resolve_allowed_target(cfg, host) is not None

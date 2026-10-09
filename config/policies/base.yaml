@@ -33,3 +33,18 @@ host_key:
     - ssh-dss
     - ssh-rsa-cert-v01@openssh.com
     - ssh-dss-cert-v01@openssh.com
+sshd:
+  expected:
+    passwordauthentication: "no"
+    pubkeyauthentication: "yes"
+    kbdinteractiveauthentication: "no"
+    permitrootlogin: "no"
+    maxauthtries: 3
+  contexts:
+    - name: root
+      user: root
+      # Synthetic client origin used to apply Match blocks.
+      host: localhost
+      addr: 127.0.0.1
+      expected:
+        permitrootlogin: "no"

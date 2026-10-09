@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import ipaddress
 import json
 import os
 import re
@@ -19,7 +20,9 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import (
+    BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator,
+)
 
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,47}$")
 MAX_YAML_BYTES = 64 * 1024
@@ -42,6 +45,101 @@ class AlgorithmRule(_Strict):
     forbidden: list[str] = Field(default_factory=list)
 
 
+class SshdExpected(_Strict):
+    """Canonical values printed by OpenSSH's ``sshd -T``.
+
+    The lowercase field names intentionally match the command output. A missing value
+    is collected as inventory but doesn't produce a policy verdict.
+    """
+
+    passwordauthentication: Literal["yes", "no"] | None = None
+    pubkeyauthentication: Literal["yes", "no"] | None = None
+    kbdinteractiveauthentication: Literal["yes", "no"] | None = None
+    permitrootlogin: Literal[
+        "yes", "no", "prohibit-password", "without-password", "forced-commands-only"
+    ] | None = None
+    allowusers: list[str] | None = None
+    denyusers: list[str] | None = None
+    allowgroups: list[str] | None = None
+    denygroups: list[str] | None = None
+    maxauthtries: int | None = Field(None, ge=1, le=1024)
+    logingracetime: int | None = Field(None, ge=0, le=86400)
+    maxsessions: int | None = Field(None, ge=0, le=1024)
+    maxstartups: str | None = Field(None, max_length=80)
+    persourcepenalties: str | None = Field(None, max_length=512)
+    clientaliveinterval: int | None = Field(None, ge=0, le=86400)
+    clientalivecountmax: int | None = Field(None, ge=0, le=1024)
+    tcpkeepalive: Literal["yes", "no"] | None = None
+    unusedconnectiontimeout: str | None = Field(None, max_length=80)
+    channeltimeout: str | None = Field(None, max_length=512)
+    usepam: Literal["yes", "no"] | None = None
+
+    @field_validator("allowusers", "denyusers", "allowgroups", "denygroups")
+    @classmethod
+    def patterns_are_bounded(cls, values: list[str] | None) -> list[str] | None:
+        if values is None:
+            return None
+        if len(values) > 128:
+            raise ValueError("at most 128 patterns are allowed")
+        for value in values:
+            if (not value or len(value) > 256
+                    or any(c in value for c in ("\x00", "\r", "\n"))):
+                raise ValueError("patterns must be non-empty single-line strings (max 256)")
+        return values
+
+    @field_validator(
+        "maxstartups", "persourcepenalties", "unusedconnectiontimeout", "channeltimeout",
+    )
+    @classmethod
+    def values_are_one_line(cls, value: str | None) -> str | None:
+        if value is not None and any(c in value for c in ("\x00", "\r", "\n")):
+            raise ValueError("expected values must be a single line")
+        return value
+
+
+class SshdContext(_Strict):
+    """One synthetic connection passed to ``sshd -T -C``."""
+
+    name: str = Field(pattern=r"^[a-z0-9][a-z0-9_-]{0,47}$")
+    user: str = Field(min_length=1, max_length=128)
+    # These describe the simulated *client* seen by sshd, not the audited server.
+    # Supplying all three works with older OpenSSH releases too.
+    host: str = Field(min_length=1, max_length=253)
+    addr: str = Field(min_length=1, max_length=64)
+    invalid_user: bool = False
+    expected: SshdExpected = Field(default_factory=SshdExpected)
+
+    @field_validator("user", "host")
+    @classmethod
+    def connection_value_is_safe(cls, value: str) -> str:
+        if (any(c in value for c in ("\x00", "\r", "\n", ",", "="))
+                or any(c.isspace() for c in value)):
+            raise ValueError(
+                "connection values cannot contain whitespace, control characters, ',' or '='"
+            )
+        return value
+
+    @field_validator("addr")
+    @classmethod
+    def address_is_an_ip(cls, value: str) -> str:
+        try:
+            return str(ipaddress.ip_address(value))
+        except ValueError as exc:
+            raise ValueError("addr must be an IPv4 or IPv6 address") from exc
+
+
+class SshdPolicy(_Strict):
+    expected: SshdExpected = Field(default_factory=SshdExpected)
+    contexts: list[SshdContext] = Field(default_factory=list, max_length=16)
+
+    @model_validator(mode="after")
+    def context_names_are_unique(self) -> "SshdPolicy":
+        names = [context.name for context in self.contexts]
+        if len(names) != len(set(names)):
+            raise ValueError("sshd context names must be unique")
+        return self
+
+
 class Policy(_Strict):
     id: str
     name: str = ""
@@ -50,6 +148,7 @@ class Policy(_Strict):
     ciphers: AlgorithmRule = Field(default_factory=AlgorithmRule)
     macs: AlgorithmRule = Field(default_factory=AlgorithmRule)
     host_key: AlgorithmRule = Field(default_factory=AlgorithmRule)
+    sshd: SshdPolicy = Field(default_factory=SshdPolicy)
 
 
 class Limits(_Strict):
@@ -57,14 +156,38 @@ class Limits(_Strict):
     max_concurrency: int = Field(4, ge=1, le=64)
 
 
+class Detection(_Strict):
+    """Read-only profile commands which print one inventory value each."""
+
+    model: str = Field("", max_length=512)
+    firmware: str = Field("", max_length=512)
+
+    @field_validator("model", "firmware")
+    @classmethod
+    def command_must_be_one_line(cls, value: str) -> str:
+        value = value.strip()
+        if any(c in value for c in ("\x00", "\r", "\n")):
+            raise ValueError("detection commands must be a single line")
+        return value
+
+
 class Profile(_Strict):
     id: str
     name: str = ""
     description: str = ""
     shell: Literal["linux", "router-cli"] = "linux"
-    safe_command: str = "id"
+    safe_command: str = Field("id", min_length=1, max_length=512)
+    detection: Detection = Field(default_factory=Detection)
     limits: Limits = Field(default_factory=Limits)
     policy: str = "base"
+
+    @field_validator("safe_command")
+    @classmethod
+    def safe_command_must_be_one_line(cls, value: str) -> str:
+        value = value.strip()
+        if not value or any(c in value for c in ("\x00", "\r", "\n")):
+            raise ValueError("safe_command must be a non-empty single line")
+        return value
 
 
 KINDS: dict[str, type[_Strict]] = {"profiles": Profile, "policies": Policy}
@@ -171,7 +294,13 @@ class Store:
                 entry = {"id": item_id, "name": doc.name or item_id,
                          "description": doc.description, "builtin": builtin}
                 if isinstance(doc, Profile):
-                    entry["policy"] = doc.policy
+                    entry.update({
+                        "policy": doc.policy,
+                        "shell": doc.shell,
+                        "safe_command": doc.safe_command,
+                        "detection": doc.detection.model_dump(),
+                        "limits": doc.limits.model_dump(),
+                    })
                 if not builtin:
                     meta = self._meta(item_id)
                     entry["uploaded_by"] = meta.get("uploaded_by", "")

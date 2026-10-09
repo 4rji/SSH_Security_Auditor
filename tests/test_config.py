@@ -1,4 +1,4 @@
-from ssh_auditor.config import load_config, target_allowed
+from ssh_auditor.config import Config, load_config, resolve_allowed_target, target_allowed
 
 
 def test_empty_allowlist_denies(tmp_path):
@@ -23,3 +23,12 @@ def test_custom_dir_defaults_to_systemd_state_directory(tmp_path, monkeypatch):
     assert load_config(cfg_file).custom_dir == "/var/lib/ssh-auditor"
     cfg_file.write_text("custom_dir: /srv/x\n")
     assert load_config(cfg_file).custom_dir == "/srv/x"
+
+
+def test_hostname_is_resolved_once_to_a_concrete_allowed_address(monkeypatch):
+    monkeypatch.setattr(
+        "ssh_auditor.config._resolve",
+        lambda _host: ["203.0.113.9", "10.0.0.8", "10.0.0.9"],
+    )
+    cfg = Config(allow_networks=["10.0.0.0/24"])
+    assert resolve_allowed_target(cfg, "lab-router.example") == "10.0.0.8"

@@ -37,8 +37,9 @@
     .step[open] > summary { border-bottom:1px solid var(--bd); border-radius:4px 8px 0 0; }
     .step > div { padding:1rem; }
     label { display:block; font-size:1rem; color:var(--mut); margin:.5rem 0 .2rem; }
-    input, select { width:100%; padding:.45rem .6rem; border:1px solid var(--bd); border-radius:6px;
+    input, select, textarea { width:100%; padding:.45rem .6rem; border:1px solid var(--bd); border-radius:6px;
                     font-size:1rem; background:var(--bg); color:var(--fg); }
+    textarea { min-height:7rem; resize:vertical; font-family:ui-monospace,monospace; }
     .row { display:grid; grid-template-columns:1fr 1fr; gap:.75rem; }
     .tests { display:grid; grid-template-columns:1fr; gap:.4rem; }
     .tests label { display:flex; align-items:center; gap:.5rem; color:var(--fg); margin:0;
@@ -109,15 +110,63 @@
             <div class="muted" id="profileMsg"></div>
           </div>
         </div>
+        <div class="row">
+          <div><label for="model">Model</label><input id="model" placeholder="detected when the profile provides a command"></div>
+          <div><label for="firmware">Firmware</label><input id="firmware" placeholder="detected when the profile provides a command"></div>
+        </div>
+        <label for="tags">Tags</label><input id="tags" placeholder="lab, regression, rack-2 (comma separated)">
       </div>
     </details>
 
     <details class="step s2">
       <summary>Step 2 · Credentials</summary>
       <div>
-        <p class="muted">Phase 1 only runs unauthenticated tests (negotiation and network
-        inventory). Login arrives in Phase 3; a <strong>Save</strong> button will appear here
-        to remember the password in this browser.</p>
+        <p class="muted">Credentials are sent only with this scan. <strong>Save</strong>
+        stores them as plain text in this browser for the current host and port;
+        <strong>Forget</strong> removes that saved entry.</p>
+        <div class="row">
+          <div><label for="authMethod">Authentication</label>
+            <select id="authMethod">
+              <option value="none">No authentication / username only</option>
+              <option value="password">Username and password</option>
+              <option value="private_key">Private key</option>
+              <option value="certificate">SSH certificate</option>
+              <option value="keyboard_interactive">Keyboard-interactive</option>
+            </select>
+          </div>
+          <div class="credential-field" data-methods="none password private_key certificate keyboard_interactive">
+            <label for="authUsername">Username</label>
+            <input id="authUsername" autocomplete="username">
+          </div>
+        </div>
+        <div class="credential-field" data-methods="password">
+          <label for="authPassword">Password</label>
+          <input id="authPassword" type="password" autocomplete="current-password">
+        </div>
+        <div class="credential-field" data-methods="private_key certificate">
+          <label for="authPrivateKey">Private key</label>
+          <textarea id="authPrivateKey" autocomplete="off" spellcheck="false"
+                    placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"></textarea>
+        </div>
+        <div class="credential-field" data-methods="private_key certificate">
+          <label for="authPassphrase">Private-key passphrase (optional)</label>
+          <input id="authPassphrase" type="password" autocomplete="off">
+        </div>
+        <div class="credential-field" data-methods="certificate">
+          <label for="authCertificate">SSH certificate</label>
+          <textarea id="authCertificate" autocomplete="off" spellcheck="false"
+                    placeholder="ssh-ed25519-cert-v01@openssh.com …"></textarea>
+        </div>
+        <div class="credential-field" data-methods="keyboard_interactive">
+          <label for="authResponses">Keyboard-interactive responses</label>
+          <textarea id="authResponses" autocomplete="off" spellcheck="false"
+                    placeholder="One response per line, in prompt order"></textarea>
+        </div>
+        <div class="bar">
+          <button type="button" id="credentialSave">Save</button>
+          <button type="button" class="sec danger" id="credentialForget">Forget</button>
+        </div>
+        <div class="muted" id="credentialMsg"></div>
       </div>
     </details>
 
@@ -141,6 +190,8 @@
         </div>
         <div class="bar">
           <label style="margin:0"><input type="checkbox" id="selall" style="width:auto"> Select all</label>
+          <label style="margin:0"><input type="checkbox" id="confirmImpact" style="width:auto">
+            I approve medium/high-impact tests</label>
         </div>
         <div class="tests" id="tests"></div>
       </div>

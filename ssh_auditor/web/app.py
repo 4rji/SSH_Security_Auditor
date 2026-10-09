@@ -76,6 +76,8 @@ def create_app(cfg: Config) -> FastAPI:
             {
                 "id": m.id, "name": m.name, "category": m.category,
                 "impact": m.impact, "requires_auth": m.requires_auth,
+                "privilege": m.privilege, "credential_method": m.credential_method,
+                "actions": list(m.actions),
             }
             for m in catalog()
         ]
@@ -152,9 +154,16 @@ def create_app(cfg: Config) -> FastAPI:
             queue.put_nowait(ev)
 
         async def worker():
-            sr = await service.run(adm, on_event=on_event)
-            queue.put_nowait({"type": "result", "result": json.loads(to_json(sr))})
-            queue.put_nowait(None)
+            try:
+                sr = await service.run(adm, on_event=on_event)
+                queue.put_nowait({"type": "result", "result": json.loads(to_json(sr))})
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                # Exception text can contain parser input. Only expose its class.
+                queue.put_nowait({"type": "error", "error": type(exc).__name__})
+            finally:
+                queue.put_nowait(None)
 
         async def gen():
             task = asyncio.create_task(worker())

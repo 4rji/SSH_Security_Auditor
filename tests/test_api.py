@@ -1,8 +1,12 @@
+import json
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 import ssh_auditor.plugins  # noqa: F401
 from ssh_auditor.config import Config
+from ssh_auditor.models import Evidence, Finding, Status
+from ssh_auditor.plugins.base import REGISTRY, Meta, register
 from ssh_auditor.web.app import create_app
 
 
@@ -180,3 +184,142 @@ async def test_invalid_request_fields_get_a_readable_message():
         detail = r.json()["detail"]
         # The web shows `detail` as is; a list would read "[object Object]".
         assert isinstance(detail, str) and "port" in detail and "65535" in detail
+
+
+@pytest.mark.asyncio
+async def test_credentials_never_leave_rest_cache_sse_or_exports(ssh_server):
+    host, port = ssh_server
+    secrets = (
+        "REST-PASSWORD-SECRET-7fb5d8",
+        "REST-PRIVATE-KEY-SECRET-7fb5d8",
+        "REST-PASSPHRASE-SECRET-7fb5d8",
+        "REST-CERTIFICATE-SECRET-7fb5d8",
+        "REST-KBDINT-SECRET-7fb5d8",
+    )
+    request = {
+        "target_host": host,
+        "port": port,
+        "tests": ["connectivity"],
+        "policy": "base",
+        "credentials": {
+            "method": "password",
+            "username": "auditor",
+            "password": secrets[0],
+            "private_key": secrets[1],
+            "private_key_passphrase": secrets[2],
+            "certificate": secrets[3],
+            "keyboard_interactive_responses": [secrets[4]],
+        },
+    }
+    app = _app(["127.0.0.0/8"])
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://t") as c:
+        response = await c.post("/api/v1/scans", json=request)
+        assert response.status_code == 200
+        assert all(secret not in response.text for secret in secrets)
+        scan_id = response.json()["scan_id"]
+
+        # This endpoint reads the already completed ScanResult from the TTL cache.
+        cached = await c.get(f"/api/v1/scans/{scan_id}")
+        assert cached.status_code == 200
+        assert all(secret not in cached.text for secret in secrets)
+        assert "credentials" not in cached.json()
+
+        for export_format in ("json", "csv", "html"):
+            exported = await c.get(
+                f"/api/v1/scans/{scan_id}/export", params={"format": export_format},
+            )
+            assert exported.status_code == 200
+            assert all(secret not in exported.text for secret in secrets)
+
+        streamed = await c.post("/api/v1/scans/stream", json=request)
+        assert streamed.status_code == 200
+        assert all(secret not in streamed.text for secret in secrets)
+        events = [
+            json.loads(line.removeprefix("data: "))
+            for line in streamed.text.splitlines()
+            if line.startswith("data: ")
+        ]
+        assert events[-1]["type"] == "result"
+        assert "credentials" not in events[-1]["result"]
+
+
+@pytest.mark.asyncio
+async def test_rest_validation_error_does_not_echo_a_secret():
+    secret = "REST-INVALID-SECRET-8c39ad"
+    app = _app(["127.0.0.0/8"])
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://t") as c:
+        response = await c.post("/api/v1/scans", json={
+            "target_host": "127.0.0.1",
+            "tests": ["connectivity"],
+            "credentials": {
+                "method": "password",
+                "username": "auditor",
+                "password": secret + ("x" * 4096),
+            },
+        })
+
+    assert response.status_code == 422
+    assert secret not in response.text
+    assert "credentials.password" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_remote_or_plugin_output_is_redacted_before_events_cache_and_exports():
+    marker = "REMOTE-ECHOED-PASSWORD-SECRET-f2ad91"
+
+    class CredentialEcho:
+        meta = Meta(
+            id="credential_echo", version="1", category="C", name="Credential echo",
+            impact="none", requires_auth=True, timeout_s=1.0,
+        )
+
+        async def collect(self, ctx):
+            secret = ctx.credentials.password.get_secret_value()
+            ctx.emit(f"remote progress contained {secret}")
+            return Evidence(data={
+                "stdout": secret,
+                "remote_data": {"nested": [secret]},
+            })
+
+        def evaluate(self, evidence, _policy):
+            secret = evidence.data["stdout"]
+            return [Finding(
+                id="credential-echo", status=Status.WARN,
+                summary=f"remote summary contained {secret}",
+                recommendation=f"remove {secret}",
+            )]
+
+    register(CredentialEcho())
+    request = {
+        "target_host": "127.0.0.1", "tests": ["credential_echo"],
+        "credentials": {
+            "method": "password", "username": "audit", "password": marker,
+        },
+    }
+    app = _app(["127.0.0.0/8"])
+    transport = ASGITransport(app=app)
+    try:
+        async with AsyncClient(transport=transport, base_url="http://t") as c:
+            response = await c.post("/api/v1/scans", json=request)
+            assert response.status_code == 200
+            assert marker not in response.text
+            assert "[REDACTED]" in response.text
+            scan_id = response.json()["scan_id"]
+
+            cached = await c.get(f"/api/v1/scans/{scan_id}")
+            assert marker not in cached.text
+            for export_format in ("json", "csv", "html"):
+                exported = await c.get(
+                    f"/api/v1/scans/{scan_id}/export",
+                    params={"format": export_format},
+                )
+                assert marker not in exported.text
+
+            streamed = await c.post("/api/v1/scans/stream", json=request)
+            assert streamed.status_code == 200
+            assert marker not in streamed.text
+            assert "[REDACTED]" in streamed.text
+    finally:
+        REGISTRY.pop("credential_echo", None)

@@ -56,7 +56,9 @@ class ScanJobs:
                 raise
             except Exception as e:  # noqa: BLE001
                 job.state = "error"
-                job.error = f"{type(e).__name__}: {e}"
+                # A connection/parser exception may include credential input. The
+                # externally visible job status only needs a stable error class.
+                job.error = f"Scan failed with {type(e).__name__}."
             finally:
                 job.ended_at = time.monotonic()
 

@@ -3,7 +3,7 @@
 // SSH Security Auditor — frontend. Scan results live only in the browser
 // (sessionStorage), never on the server. Profiles and policies are shared through the
 // server; the owner token of each upload stays in the uploader's browser (localStorage).
-// Phase 1: tests without login.
+// Credentials are only persisted after an explicit Save and are keyed by host:port.
 
 const $ = (id) => document.getElementById(id);
 let lastResult = null;
@@ -25,6 +25,7 @@ const local = {
 };
 const TOKENS_KEY = "sshAuditor.ownerTokens";
 const ENGINEER_KEY = "sshAuditor.engineer";
+const CREDENTIALS_KEY = "sshAuditor.credentials.v1";
 
 function ownerToken(kind, id) { return local.get(TOKENS_KEY, {})[`${kind}/${id}`]; }
 function setOwnerToken(kind, id, token) {
@@ -47,6 +48,7 @@ async function init() {
   setupThemeButton($("themeBtn"));
   $("engineer").value = local.get(ENGINEER_KEY, "");
   $("engineer").addEventListener("change", () => local.set(ENGINEER_KEY, $("engineer").value.trim()));
+  setupCredentials();
 
   // Profiles and policies
   for (const kind of Object.keys(KINDS)) {
@@ -65,10 +67,14 @@ async function init() {
   try {
     const tests = await j("/api/v1/tests");
     testNames = Object.fromEntries(tests.map((t) => [t.id, t.name]));
-    $("tests").innerHTML = tests.map((t) =>
-      `<label><input type="checkbox" class="tchk" value="${esc(t.id)}" checked>
-       ${esc(t.name)} <span class="muted">· ${esc(t.category)} · impact ${esc(t.impact)}</span></label>`
-    ).join("");
+    $("tests").innerHTML = tests.map((t) => {
+      const auth = t.requires_auth ? ` · auth ${t.credential_method || "any"}` : "";
+      const privilege = t.privilege && t.privilege !== "none" ? ` · ${t.privilege}` : "";
+      const actions = (t.actions || []).length ? ` — ${t.actions.join("; ")}` : "";
+      const checked = t.impact === "medium" || t.impact === "high" ? "" : " checked";
+      return `<label><input type="checkbox" class="tchk" value="${esc(t.id)}"${checked}>
+       ${esc(t.name)} <span class="muted">· ${esc(t.category)} · impact ${esc(t.impact)}${esc(auth)}${esc(privilege)}${esc(actions)}</span></label>`;
+    }).join("");
   } catch (e) { setStatus("Could not load the test catalog: " + e.message); }
 
   // Restore the last result of this browser tab (kept until "Clear results").
@@ -91,6 +97,103 @@ async function init() {
   $("liveRun").addEventListener("click", runLiveCompare);
   $("liveExportA").addEventListener("click", () => exportScan(liveScans.a, "json"));
   $("liveExportB").addEventListener("click", () => exportScan(liveScans.b, "json"));
+}
+
+// --- credentials -------------------------------------------------------------------
+
+function credentialTargetKey(host = $("host").value, port = $("port").value) {
+  const normalized = String(host || "").trim().toLowerCase().replace(/\.$/, "");
+  return normalized ? `${normalized}:${parseInt(port || "22", 10)}` : "";
+}
+
+function emptyCredentialForm() {
+  $("authMethod").value = "none";
+  ["authUsername", "authPassword", "authPrivateKey", "authPassphrase",
+   "authCertificate", "authResponses"].forEach((id) => { $(id).value = ""; });
+  updateCredentialFields();
+}
+
+function credentialFromForm() {
+  const method = $("authMethod").value;
+  const out = { method, username: $("authUsername").value.trim() };
+  if (method === "none") return out;
+  if (method === "password") out.password = $("authPassword").value;
+  if (method === "private_key" || method === "certificate") {
+    out.private_key = $("authPrivateKey").value;
+    if ($("authPassphrase").value) out.private_key_passphrase = $("authPassphrase").value;
+  }
+  if (method === "certificate") out.certificate = $("authCertificate").value;
+  if (method === "keyboard_interactive") {
+    out.keyboard_interactive_responses = $("authResponses").value.split("\n");
+  }
+  return out;
+}
+
+function fillCredentialForm(credential) {
+  emptyCredentialForm();
+  if (!credential || !credential.method) return;
+  $("authMethod").value = credential.method;
+  $("authUsername").value = credential.username || "";
+  $("authPassword").value = credential.password || "";
+  $("authPrivateKey").value = credential.private_key || "";
+  $("authPassphrase").value = credential.private_key_passphrase || "";
+  $("authCertificate").value = credential.certificate || "";
+  $("authResponses").value = (credential.keyboard_interactive_responses || []).join("\n");
+  updateCredentialFields();
+}
+
+function savedCredential(host, port) {
+  return local.get(CREDENTIALS_KEY, {})[credentialTargetKey(host, port)] || null;
+}
+
+function updateCredentialFields() {
+  const method = $("authMethod").value;
+  document.querySelectorAll(".credential-field").forEach((el) => {
+    el.hidden = !el.dataset.methods.split(" ").includes(method);
+  });
+  $("credentialForget").disabled = !credentialTargetKey() ||
+    !savedCredential($("host").value, $("port").value);
+}
+
+function restoreCredentials() {
+  const credential = savedCredential($("host").value, $("port").value);
+  fillCredentialForm(credential);
+  $("credentialMsg").textContent = credential
+    ? "Loaded credentials saved for this host and port." : "";
+}
+
+function saveCredentials() {
+  const key = credentialTargetKey();
+  const credential = credentialFromForm();
+  if (!key) { $("credentialMsg").textContent = "Enter the target host first."; return; }
+  if (credential.method === "none" && !credential.username) {
+    $("credentialMsg").textContent = "Choose an authentication method or enter a username.";
+    return;
+  }
+  if (!credential.username) { $("credentialMsg").textContent = "Enter a username."; return; }
+  const all = local.get(CREDENTIALS_KEY, {});
+  all[key] = credential;
+  local.set(CREDENTIALS_KEY, all);
+  $("credentialMsg").textContent = `Saved in this browser for ${key}.`;
+  updateCredentialFields();
+}
+
+function forgetCredentials() {
+  const key = credentialTargetKey();
+  const all = local.get(CREDENTIALS_KEY, {});
+  if (key) delete all[key];
+  local.set(CREDENTIALS_KEY, all);
+  emptyCredentialForm();
+  $("credentialMsg").textContent = key ? `Forgot credentials for ${key}.` : "Credentials cleared.";
+}
+
+function setupCredentials() {
+  $("authMethod").addEventListener("change", updateCredentialFields);
+  $("credentialSave").addEventListener("click", saveCredentials);
+  $("credentialForget").addEventListener("click", forgetCredentials);
+  $("host").addEventListener("change", restoreCredentials);
+  $("port").addEventListener("change", restoreCredentials);
+  updateCredentialFields();
 }
 
 // --- profiles and policies ---------------------------------------------------------
@@ -122,6 +225,12 @@ function updateItemMeta(kind) {
       : `Custom · uploaded by ${it.uploaded_by || "unknown"}` +
         (it.uploaded_at ? ` on ${new Date(it.uploaded_at).toLocaleString()}` : "");
     if (it.description) text += ` — ${it.description}`;
+    if (kind === "profiles") {
+      const detectors = Object.entries(it.detection || {}).filter(([, command]) => command)
+        .map(([field, command]) => `${field}: ${command}`);
+      text += ` · shell ${it.shell || "unknown"} · harmless command: ${it.safe_command || "none"}`;
+      if (detectors.length) text += ` · detection: ${detectors.join("; ")}`;
+    }
   }
   $(k.meta).textContent = text;
   const del = document.querySelector(`.tools[data-kind="${kind}"] [data-act="delete"]`);
@@ -239,12 +348,26 @@ function selectedTests() {
   return Array.from(document.querySelectorAll(".tchk:checked")).map((c) => c.value);
 }
 
-function scanBody(host, port) {
-  return {
+function scanBody(host, port, useForm = false) {
+  const body = {
     target_host: host, port: parseInt(port || "22", 10),
     profile: $("profile").value, policy: $("policy").value, tests: selectedTests(),
     run_by: $("engineer").value.trim(),
+    confirm_impact: $("confirmImpact").checked,
   };
+  const sameTarget = credentialTargetKey(host, port) === credentialTargetKey();
+  const credential = useForm || sameTarget
+    ? credentialFromForm() : savedCredential(host, port);
+  if (credential && (credential.method !== "none" || credential.username)) {
+    body.credentials = credential;
+  }
+  if (sameTarget) {
+    body.target_name = $("name").value.trim();
+    body.model = $("model").value.trim();
+    body.firmware = $("firmware").value.trim();
+    body.tags = $("tags").value.split(",").map((x) => x.trim()).filter(Boolean);
+  }
+  return body;
 }
 
 // Runs one scan with live progress. `log` receives each progress line; resolves with
@@ -254,7 +377,7 @@ async function streamScan(body, log) {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
   });
   if (!r.ok) throw new Error(await errorDetail(r));
-  let result = null;
+  let result = null, failure = null;
   await readSSE(r.body, (ev) => {
     if (ev.type === "started") {
       log(`Started (${ev.tests.join(", ")})`);
@@ -266,8 +389,11 @@ async function streamScan(body, log) {
       log("Finished — " + Object.entries(ev.summary).map(([k, v]) => `${k}: ${v}`).join("  "));
     } else if (ev.type === "result") {
       result = ev.result;
+    } else if (ev.type === "error") {
+      failure = ev.error || "ScanError";
     }
   });
+  if (failure) throw new Error(`the scan failed with ${failure}`);
   if (!result) throw new Error("the scan ended without a result");
   return result;
 }
@@ -307,8 +433,10 @@ async function runScan() {
   $("compare").innerHTML = "";
   setStatus("Running…");
   try {
-    lastResult = await streamScan(scanBody(host, $("port").value), logTo($("log")));
+    lastResult = await streamScan(scanBody(host, $("port").value, true), logTo($("log")));
     try { sessionStorage.setItem("lastResult", JSON.stringify(lastResult)); } catch (_) {}
+    if (lastResult.model) $("model").value = lastResult.model;
+    if (lastResult.firmware) $("firmware").value = lastResult.firmware;
     renderResults(lastResult);
     enableExports(true);
     setStatus("Finished.");
@@ -418,6 +546,11 @@ const FIELD_LABEL = {
   pq_kex_algs: "Post-quantum algorithms", aead: "AEAD ciphers", etm: "Encrypt-then-MAC MACs",
   fips_path: "FIPS-oriented path", auth_methods: "Authentication methods",
   auth_methods_error: "Error reading methods", host_key_fingerprints: "Host key fingerprint",
+  profile: "Device profile", model: "Detected model", firmware: "Detected firmware",
+  commands: "Detection commands", errors: "Detection errors", applicable: "Applicable",
+  skip_reason: "Skip reason", runner: "Privilege path", version: "OpenSSH version",
+  system: "Remote system", default: "Default sshd settings", contexts: "Match contexts",
+  malformed: "Ignored sshd output",
 };
 
 // How a comparison is worded: an earlier export against the current scan, or device A
@@ -454,6 +587,7 @@ function fmtVal(v, cls = "") {
   if (v === null || v === undefined) return `<span class="muted">—</span>`;
   if (v === true) return "yes";
   if (v === false) return "no";
+  if (typeof v === "object") return `<span class="mono ${cls}">${esc(JSON.stringify(v, null, 2))}</span>`;
   return `<span class="mono ${cls}">${esc(v)}</span>`;
 }
 
@@ -461,9 +595,12 @@ function fmtVal(v, cls = "") {
 // side's list, the items it lacks are highlighted.
 function fmtList(list, other) {
   if (!list.length) return `<span class="muted">empty</span>`;
-  const theirs = other ? new Set(other) : null;
-  return `<div class="mono">${list.map((x) =>
-    theirs && !theirs.has(x) ? `<span class="only">${esc(x)}</span>` : esc(x)).join("<br>")}</div>`;
+  const display = (x) => typeof x === "object" ? JSON.stringify(x) : String(x);
+  const theirs = other ? new Set(other.map(display)) : null;
+  return `<div class="mono">${list.map((x) => {
+    const value = display(x);
+    return theirs && !theirs.has(value) ? `<span class="only">${esc(value)}</span>` : esc(value);
+  }).join("<br>")}</div>`;
 }
 
 // The Match column only says whether both sides agree; the values are in the columns
@@ -514,6 +651,9 @@ function renderCompare(res, target, view) {
   const when = (iso) => new Date(iso).toLocaleString();
   const metaRows = [
     ["Device", `${a.target_host}:${a.port}`, `${b.target_host}:${b.port}`],
+    ["Name", a.target_name || "—", b.target_name || "—"],
+    ["Model", a.model || "—", b.model || "—"],
+    ["Firmware", a.firmware || "—", b.firmware || "—"],
     ["Date", when(a.started_at), when(b.started_at)],
     ["Profile", a.profile, b.profile],
     ["Policy", a.policy_name, b.policy_name],

@@ -55,8 +55,8 @@ def test_exports_show_who_and_when():
     assert "2026-10-08 14:30:05 UTC · Run by Ana &lt;ops&gt; · Profile p · Policy base" in html
     assert "14:30:09" not in html and "Exported" not in html and "<table class='meta'" not in html
     rows = to_csv(sr).splitlines()
-    assert rows[0].endswith("target,run_by,started_at")
-    assert rows[1].endswith("10.0.0.5:22,Ana <ops>,2026-10-08 14:30:05 UTC")
+    assert rows[0].endswith("target,target_name,model,firmware,tags,run_by,started_at")
+    assert rows[1].endswith("10.0.0.5:22,,,,,Ana <ops>,2026-10-08 14:30:05 UTC")
     assert from_json(to_json(sr)).run_by == "Ana <ops>"
 
 

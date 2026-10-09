@@ -31,12 +31,14 @@ def _utc(dt: datetime | None) -> str:
 def to_csv(sr: ScanResult) -> str:
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(["test_id", "category", "status", "summary", "target", "run_by", "started_at"])
+    w.writerow(["test_id", "category", "status", "summary", "target", "target_name",
+                "model", "firmware", "tags", "run_by", "started_at"])
     target = f"{sr.target_host}:{sr.port}"
     for r in sr.results:
         summary = "; ".join(f.summary for f in r.findings) or r.status.value
-        w.writerow([r.test_id, r.category, r.status.value, summary,
-                    target, sr.run_by, _utc(sr.started_at)])
+        w.writerow([r.test_id, r.category, r.status.value, summary, target, sr.target_name,
+                    sr.model, sr.firmware, ", ".join(sr.tags), sr.run_by,
+                    _utc(sr.started_at)])
     return buf.getvalue()
 
 
@@ -92,6 +94,12 @@ def to_html(sr: ScanResult) -> str:
     ref = [_utc(sr.started_at)]
     if sr.run_by:
         ref.append(f"Run by {sr.run_by}")
+    if sr.target_name:
+        ref.append(f"Device {sr.target_name}")
+    if sr.model:
+        ref.append(f"Model {sr.model}")
+    if sr.firmware:
+        ref.append(f"Firmware {sr.firmware}")
     ref += [f"Profile {sr.profile}", f"Policy {sr.policy_name}",
             f"Tool {sr.tool_version}", f"Scan {sr.scan_id}"]
     return (

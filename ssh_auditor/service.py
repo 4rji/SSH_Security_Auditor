@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 
-from ssh_auditor.config import Config, target_allowed
+from ssh_auditor.config import Config, resolve_allowed_target
 from ssh_auditor.engine.cache import TTLCache
 from ssh_auditor.engine.jobs import JobsFull, ScanJobs
 from ssh_auditor.engine.runner import run_scan
@@ -29,6 +29,8 @@ class ScanRejected(Exception):
 class Admitted:
     req: ScanRequest  # normalised: tests deduped, policy and concurrency filled in
     policy: dict
+    profile: object
+    connect_host: str  # concrete allowlisted address resolved exactly once
     limit: int  # connections allowed against the target, summed over every scan
 
 
@@ -50,7 +52,8 @@ class AuditService:
             raise ScanRejected(e.status, e.detail) from e
 
     def admit(self, req: ScanRequest) -> Admitted:
-        if not target_allowed(self.cfg, req.target_host):
+        connect_host = resolve_allowed_target(self.cfg, req.target_host)
+        if connect_host is None:
             raise ScanRejected(403, "Target outside the allowlist, or the allowlist is "
                                     f"empty: {req.target_host}")
         tests = list(dict.fromkeys(req.tests))
@@ -75,12 +78,14 @@ class AuditService:
         req = req.model_copy(update={
             "tests": tests, "policy": policy_id, "concurrency": req.concurrency or limit,
         })
-        return Admitted(req=req, policy=policy, limit=limit)
+        return Admitted(req=req, policy=policy, profile=profile,
+                        connect_host=connect_host, limit=limit)
 
     async def run(self, adm: Admitted, on_event=None) -> ScanResult:
         """Run an admitted scan to the end (the web waits for it or streams it)."""
         return await run_scan(adm.req, policy=adm.policy, tool_version=self.tool_version,
-                              limit=adm.limit, cache=self.cache, on_event=on_event)
+                              limit=adm.limit, cache=self.cache, on_event=on_event,
+                              profile=adm.profile, connect_host=adm.connect_host)
 
     def start(self, req: ScanRequest) -> str:
         """Admit the scan and run it in the background; returns its id at once."""
@@ -89,7 +94,8 @@ class AuditService:
         def run(scan_id: str, on_event):
             return run_scan(adm.req, policy=adm.policy, tool_version=self.tool_version,
                             limit=adm.limit, cache=self.cache, on_event=on_event,
-                            scan_id=scan_id)
+                            scan_id=scan_id, profile=adm.profile,
+                            connect_host=adm.connect_host)
 
         try:
             return self.jobs.start(adm.req.tests, run)

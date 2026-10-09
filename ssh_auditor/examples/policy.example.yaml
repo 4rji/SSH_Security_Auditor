@@ -33,3 +33,27 @@ host_key:
   forbidden:
     - ssh-rsa
     - ssh-dss
+
+# Optional effective OpenSSH policy. Values use the canonical lowercase output of
+# `sshd -T`. Every context runs another read-only `sshd -T -C` evaluation so Match
+# blocks are included. Omit any value which should be inventory-only.
+# Account allow/block decisions are checked against the effective AllowUsers,
+# DenyUsers, AllowGroups and DenyGroups lists here; the auditor does not try a login.
+sshd:
+  expected:
+    passwordauthentication: "no"
+    pubkeyauthentication: "yes"
+    kbdinteractiveauthentication: "no"
+    permitrootlogin: "no"
+    maxauthtries: 3
+    clientaliveinterval: 300
+    clientalivecountmax: 2
+    tcpkeepalive: "yes"
+  contexts:
+    - name: root-from-auditor
+      user: root
+      # host and addr are the simulated client origin (not the audited server).
+      host: auditor.example.test
+      addr: 192.0.2.10
+      expected:
+        permitrootlogin: "no"

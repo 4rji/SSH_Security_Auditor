@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections import Counter
 
 from ssh_auditor.models import ScanResult, Status, TestResult
@@ -35,13 +36,17 @@ def _field_diff(field: str, va, vb) -> dict:
 def _shape_diff(field: str, va, vb) -> dict:
     if isinstance(va, list) or isinstance(vb, list):
         la, lb = va or [], vb or []
-        sa, sb = set(la), set(lb)
+        # Context evidence contains dictionaries. Compare all list items by a stable
+        # JSON key while returning the original values to the UI.
+        key = lambda value: json.dumps(value, sort_keys=True, separators=(",", ":"))
+        ka, kb = [key(x) for x in la], [key(x) for x in lb]
+        sa, sb = set(ka), set(kb)
         return {
             "field": field, "kind": "list", "before": la, "after": lb,
             # In the server's order: KEXINIT order is its preference.
-            "added": [x for x in lb if x not in sa],
-            "removed": [x for x in la if x not in sb],
-            "reordered": sa == sb and la != lb,
+            "added": [x for x, k in zip(lb, kb) if k not in sa],
+            "removed": [x for x, k in zip(la, ka) if k not in sb],
+            "reordered": sa == sb and ka != kb,
             "changed": la != lb,
         }
     if isinstance(va, dict) or isinstance(vb, dict):
@@ -90,6 +95,8 @@ def _findings(ta: TestResult | None, tb: TestResult | None) -> list[dict]:
 def _meta(sr: ScanResult) -> dict:
     return {
         "scan_id": sr.scan_id, "target_host": sr.target_host, "port": sr.port,
+        "target_name": sr.target_name, "model": sr.model, "firmware": sr.firmware,
+        "tags": sr.tags,
         "profile": sr.profile, "policy_name": sr.policy_name,
         "started_at": sr.started_at.isoformat(), "tool_version": sr.tool_version,
         "run_by": sr.run_by,

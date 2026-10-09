@@ -30,10 +30,21 @@ def _text(r) -> str:
 async def test_catalog_tools_and_instructions():
     async with Client(_mcp()) as c:
         assert "Recommended flow" in c.instructions
-        assert {t.name for t in (await c.list_tools()).tools} == TOOLS
+        tools = (await c.list_tools()).tools
+        assert {t.name for t in tools} == TOOLS
+        start_scan = next(tool for tool in tools if tool.name == "start_scan")
+        credential_help = start_scan.input_schema["properties"]["credentials"]["description"]
+        for field in (
+            "password", "private_key", "private_key_passphrase", "certificate",
+            "keyboard_interactive_responses",
+        ):
+            assert field in credential_help
         tests = (await c.call_tool("list_tests", {})).structured_content["tests"]
         assert {t["id"] for t in tests} >= {"connectivity", "negotiation"}
-        assert all(t["needs_confirm_impact"] is False for t in tests)
+        by_id = {t["id"]: t for t in tests}
+        assert by_id["connectivity"]["needs_confirm_impact"] is False
+        assert by_id["auth_reject_wrong_password"]["needs_confirm_impact"] is True
+        assert by_id["sshd_config"]["privilege"] == "root-or-sudo"
         profs = (await c.call_tool("list_profiles", {})).structured_content
         generic = next(p for p in profs["device_profiles"] if p["id"] == "generic")
         assert generic["limits"]["max_concurrency"] == 4 and generic["policy"] == "base"
@@ -80,6 +91,85 @@ async def test_server_side_limits_reach_claude(risky_plugin):
         r = await c.call_tool("start_scan", {"target_host": "127.0.0.1",
                                              "tests": ["connectivity"], "port": 70000})
         assert r.is_error and "Invalid input" in _text(r)
+
+
+@pytest.mark.asyncio
+async def test_credentials_never_leave_mcp_results_or_validation_errors(ssh_server):
+    host, port = ssh_server
+    secrets = (
+        "MCP-PASSWORD-SECRET-1c62fa",
+        "MCP-PRIVATE-KEY-SECRET-1c62fa",
+        "MCP-PASSPHRASE-SECRET-1c62fa",
+        "MCP-CERTIFICATE-SECRET-1c62fa",
+        "MCP-KBDINT-SECRET-1c62fa",
+    )
+    async with Client(_mcp()) as c:
+        started = await c.call_tool("start_scan", {
+            "target_host": host,
+            "port": port,
+            "tests": ["connectivity"],
+            "credentials": {
+                "method": "password",
+                "username": "auditor",
+                "password": secrets[0],
+                "private_key": secrets[1],
+                "private_key_passphrase": secrets[2],
+                "certificate": secrets[3],
+                "keyboard_interactive_responses": [secrets[4]],
+            },
+        })
+        assert not started.is_error, _text(started)
+        assert all(secret not in repr(started) for secret in secrets)
+
+        scan_id = started.structured_content["scan_id"]
+        finished = await c.call_tool("get_scan", {"scan_id": scan_id, "wait_s": 30})
+        assert not finished.is_error, _text(finished)
+        assert finished.structured_content["state"] == "done"
+        assert all(secret not in repr(finished) for secret in secrets)
+        assert "credentials" not in finished.structured_content["result"]
+
+        invalid_secret = "MCP-INVALID-SECRET-9d47c1"
+        invalid = await c.call_tool("start_scan", {
+            "target_host": host,
+            "port": port,
+            "tests": ["connectivity"],
+            "credentials": {
+                "method": "password",
+                "username": "auditor",
+                "password": invalid_secret + ("x" * 4096),
+            },
+        })
+        assert invalid.is_error
+        assert "password" in _text(invalid)
+        assert invalid_secret not in repr(invalid)
+
+        # These values used to be rejected by the MCP SDK before start_scan ran,
+        # and its default validation error included input_value verbatim.
+        wrong_object_secret = "MCP-WRONG-OBJECT-SECRET-c8e31a"
+        wrong_object = await c.call_tool("start_scan", {
+            "target_host": host,
+            "port": port,
+            "tests": ["connectivity"],
+            "credentials": wrong_object_secret,
+        })
+        assert wrong_object.is_error
+        assert "credentials" in _text(wrong_object)
+        assert wrong_object_secret not in repr(wrong_object)
+
+        wrong_field_secret = "MCP-WRONG-FIELD-SECRET-a09d74"
+        wrong_field = await c.call_tool("start_scan", {
+            "target_host": host,
+            "port": port,
+            "tests": ["connectivity"],
+            "credentials": {
+                "method": "password",
+                "username": "auditor",
+                "password": [wrong_field_secret],
+            },
+        })
+        assert wrong_field.is_error
+        assert "password" in _text(wrong_field)
+        assert wrong_field_secret not in repr(wrong_field)
 
 
 @pytest.mark.asyncio

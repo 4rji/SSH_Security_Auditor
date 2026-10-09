@@ -1,20 +1,20 @@
 # SSH Security Auditor
 
 Internal tool to audit the SSH posture of routers and other network devices:
-negotiation (algorithms, host keys, Terrapin, post-quantum KEX, FIPS-oriented path,
-authentication methods) and — in later phases — authentication, effective `sshd`
-configuration, yescrypt and concurrency. Scan results live in the browser and in the
-exports, never on the server. Reachable from the web and from Claude (MCP).
+negotiation (algorithms, host keys, Terrapin, post-quantum KEX, FIPS-oriented path and
+authentication methods), functional authentication, device inventory and effective
+`sshd` configuration. Yescrypt and concurrency are planned next. Results are cached in
+server RAM for a limited time and can be exported from the web or Claude (MCP).
 
 For use on the **internal network** only, against **authorised devices** (mandatory
 allowlist).
 
 ## Status
 
-Phases 1 and 2 are implemented: plugin engine, connectivity and negotiation tests (no
-login), API, 4-step web UI with live progress, JSON/HTML/CSV export, detailed comparison
-of two runs, shared device profiles and policies, and an MCP server for Claude Code and
-Claude Desktop. The full plan is in `docs/superpowers/plans/` and `instrucciones.md`.
+Phases 1–3 are implemented: the plugin engine; connectivity, negotiation, authentication,
+inventory and effective `sshd -T -C` tests; API; web UI with live progress;
+JSON/HTML/CSV export; detailed comparison; shared device profiles and policies; and an
+MCP server for Claude Code and Claude Desktop. The full design is in `instrucciones.md`.
 
 ## Using it from Claude (MCP)
 
@@ -70,6 +70,9 @@ sudo systemctl enable --now ssh-auditor
 - Mandatory allowlist of target networks (empty = reject everything).
 - The server stores no credentials and no scan results on disk; the result cache is in
   RAM with a TTL.
+- Credentials are sent only with a scan. The web saves them only when the engineer clicks
+  **Save**, as plain text in that browser's `localStorage`, keyed by target host and port;
+  **Forget** removes that entry.
 - The only thing written to disk is uploaded profiles and policies (YAML validated against
   a strict schema, 64 KB max) in `/var/lib/ssh-auditor`.
 - Internal network only, no login token.

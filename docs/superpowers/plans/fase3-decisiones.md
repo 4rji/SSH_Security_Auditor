@@ -1,19 +1,94 @@
-# Fase 3 — Decisiones tomadas (2026-10-09)
+# Fase 3 — Decisiones e implementación (2026-10-09)
 
-Notas para retomar la Fase 3. Todavía no hay plan de implementación escrito.
-
-## Diseño
-
-- El diseño es `instrucciones.md`: §3 paso 2, §4 C y D, §12 Fase 3 y §13 criterios de la Fase 3. No se escribe una spec aparte: el plan sale directo de ahí, como el de la Fase 2.
+Este documento conserva las decisiones de la Fase 3 y describe el contrato que quedó
+implementado. El diseño de referencia sigue siendo `instrucciones.md`: §3 paso 2, §4 C
+y D, §12 Fase 3 y §13 criterios de la Fase 3.
 
 ## Alcance y orden
 
-La Fase 3 se parte en dos ciclos, cada uno con su plan, ejecución y revisión:
+La Fase 3 se implementó en dos ciclos dependientes:
 
 1. **3a — Credenciales y pruebas C (autenticación).** Incluye los botones **Guardar** y **Olvidar** de la web.
 2. **3b — Pruebas D y detección.** Configuración efectiva de solo lectura con `sshd -T -C`, `SKIP` con motivo en equipos sin shell Linux u OpenSSH, y detección de modelo y firmware según el perfil de dispositivo.
 
 La 3b usa el login de la 3a, así que va después.
+
+## Estado implementado
+
+### 3a — Credenciales y autenticación
+
+- `Credentials` acepta `password`, `private_key`, `certificate` y
+  `keyboard_interactive`. Un certificado requiere también su llave privada; una llave
+  puede llevar frase de paso; las respuestas interactivas conservan el orden de los
+  prompts.
+- La petición REST y `start_scan` reciben el mismo campo `credentials`. El campo es de
+  entrada y se excluye de la serialización de `ScanRequest`; no existe un campo
+  equivalente en resultados, eventos, caché ni exportaciones.
+- Cada conexión fuerza el método elegido y deshabilita llaves locales, agente SSH,
+  configuración del cliente, GSSAPI y demás credenciales ambientales. Las llaves y los
+  certificados se importan desde memoria.
+- Las pruebas positivas son `auth_password`, `auth_private_key`, `auth_certificate` y
+  `auth_keyboard_interactive`. Tras autenticar ejecutan `safe_command` del perfil y
+  cierran la sesión.
+- Los casos negativos son `auth_reject_wrong_password`,
+  `auth_reject_unauthorized_key` y `auth_publickey_only`. Cada uno abre una sola
+  conexión; un rechazo esperado produce `PASS` y una aceptación produce `FAIL`.
+- `auth_repeated_sessions` abre, usa y cierra tres sesiones en secuencia. Los casos
+  negativos y esta prueba tienen impacto `medium`, requieren `confirm_impact` y no
+  aparecen seleccionados por defecto en la web.
+- Las excepciones que cruzan el límite del plugin se reducen a mensajes permitidos o al
+  nombre de su clase. No se devuelve el texto arbitrario de excepciones que pueda
+  contener una contraseña, llave o respuesta interactiva.
+
+### 3b — Detección y configuración efectiva
+
+- `device_inventory` ejecuta únicamente los comandos `detection.model` y
+  `detection.firmware` del perfil. Cada comando y `safe_command` debe ser una sola línea
+  de hasta 512 caracteres. La salida de detección se limita a 4096 bytes y el valor
+  normalizado a 512 caracteres.
+- Modelo, firmware y etiquetas forman parte de la petición y del resultado. Cuando el
+  usuario no proporciona modelo o firmware, los valores detectados completan el
+  resultado y los campos de la web.
+- La web muestra el tipo de shell, `safe_command` y los comandos de detección del perfil
+  antes del análisis. Un perfil es configuración confiable: esos comandos se ejecutan
+  tal como están declarados y deben ser de solo lectura.
+- `sshd_config` solo aplica a un perfil con shell `linux`, credenciales autenticadas,
+  Linux remoto, un binario OpenSSH `sshd` y acceso como `root` o mediante `sudo -n`.
+  Cualquier condición de aplicabilidad ausente produce `SKIP` con el motivo concreto.
+- La recolección ejecuta `sshd -T` y, por cada contexto de la política, añade
+  `-C user=…`, `-C host=…` y `-C addr=…` (más `-C invalid-user` cuando corresponda).
+  Un contexto tiene `name`, `user`, `host`, `addr`, `invalid_user` opcional y sus
+  valores `expected`; los nombres deben ser únicos.
+- Se comparan los valores efectivos de autenticación, acceso de cuentas, root,
+  límites, keepalive, timeouts y PAM. También se comprueban propietario y permisos de
+  `sshd_config`, fragmentos de `sshd_config.d` y llaves privadas de host. Toda la
+  recolección es de solo lectura.
+- Las cuentas permitidas o bloqueadas y el acceso de `root` se evalúan contra las
+  directivas efectivas de cada contexto. No se intentan logins adicionales para esas
+  comprobaciones.
+
+### Interfaz y catálogo
+
+- **Guardar** persiste explícitamente las credenciales en texto claro bajo
+  `sshAuditor.credentials.v1`, indexadas por `host:port` normalizado. **Olvidar** borra
+  solo la entrada de ese equipo y limpia el formulario.
+- En una comparación en vivo, el segundo equipo recibe únicamente sus propias
+  credenciales guardadas; el formulario actual se reutiliza solo cuando host y puerto
+  coinciden.
+- El catálogo de la web y del MCP expone método de credencial, privilegio requerido y
+  acciones remotas de cada prueba para que el operador pueda revisar el impacto antes
+  de autorizarlo.
+
+## Validación realizada
+
+Hay pruebas automatizadas de los cuatro métodos de autenticación, rechazos esperados,
+sesiones repetidas, cancelación, límites de salida, detección, análisis de `sshd -T`,
+permisos y omisión de secretos en modelos y resultados. Contraseña, llave privada,
+certificado y `keyboard-interactive` se prueban de extremo a extremo contra servidores
+AsyncSSH locales controlados; el caso de certificado comprueba además que una CA
+rechazada no pueda caer silenciosamente a la llave sin certificado. Esta validación no
+equivale a una prueba manual contra equipos físicos, firmwares reales o clientes Claude;
+esas verificaciones externas no se dan por realizadas aquí.
 
 ## Decisiones
 

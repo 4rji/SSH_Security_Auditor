@@ -13,6 +13,12 @@ shell: linux
 # Harmless command run after login to confirm the session works (later phases).
 safe_command: id
 
+# Optional read-only commands. Each command should print only the value to record.
+# Leave a command empty when this profile cannot detect that field.
+detection:
+  model: cat /sys/class/dmi/id/product_name
+  firmware: uname -r
+
 limits:
   # Maximum connections the device may receive in the concurrency tests (later phases).
   max_connections: 20
