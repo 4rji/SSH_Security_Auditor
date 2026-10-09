@@ -46,7 +46,9 @@ web exports.
 regressions between firmware versions or models.
 Run the tests in this order: negotiation first (no login), then authentication and \
 effective sshd configuration, then yescrypt. Authentication tests take one `credentials` \
-object. It is used only while the scan runs and is never returned in results or exports.
+object. It is used only while the scan runs and is never returned in results or exports. \
+The server resolves the target once and connects only to its allowlisted address, but it \
+does not pin the SSH host key yet; use credentials only for authorised internal lab devices.
 
 Statuses: PASS meets the policy. WARN works but needs review. FAIL breaks a defined \
 requirement. INFO is inventory or evidence without a verdict. SKIP was not run (not \

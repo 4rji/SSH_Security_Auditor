@@ -73,6 +73,9 @@ sudo systemctl enable --now ssh-auditor
 - Credentials are sent only with a scan. The web saves them only when the engineer clicks
   **Save**, as plain text in that browser's `localStorage`, keyed by target host and port;
   **Forget** removes that entry.
+- Authenticated connections resolve the target once and connect only to the concrete IP
+  accepted by the allowlist. Host-key pinning is not configured yet, so use credentials
+  only for authorised devices on the trusted internal lab network.
 - The only thing written to disk is uploaded profiles and policies (YAML validated against
   a strict schema, 64 KB max) in `/var/lib/ssh-auditor`.
 - Internal network only, no login token.

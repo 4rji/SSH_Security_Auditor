@@ -27,6 +27,9 @@ La 3b usa el login de la 3a, así que va después.
 - Cada conexión fuerza el método elegido y deshabilita llaves locales, agente SSH,
   configuración del cliente, GSSAPI y demás credenciales ambientales. Las llaves y los
   certificados se importan desde memoria.
+- El método `none` puede llevar solo `username` para los casos negativos que no
+  necesitan una credencial válida. La web conserva y envía ese usuario sin exigir una
+  contraseña o llave ficticia.
 - Las pruebas positivas son `auth_password`, `auth_private_key`, `auth_certificate` y
   `auth_keyboard_interactive`. Tras autenticar ejecutan `safe_command` del perfil y
   cierran la sesión.
@@ -39,6 +42,9 @@ La 3b usa el login de la 3a, así que va después.
 - Las excepciones que cruzan el límite del plugin se reducen a mensajes permitidos o al
   nombre de su clase. No se devuelve el texto arbitrario de excepciones que pueda
   contener una contraseña, llave o respuesta interactiva.
+- El motor redacta además los valores secretos si un equipo remoto los devuelve en
+  stdout, stderr, evidencia, hallazgos o mensajes de progreso, antes de crear el
+  resultado, emitir SSE o escribir en la caché.
 
 ### 3b — Detección y configuración efectiva
 
@@ -55,6 +61,9 @@ La 3b usa el login de la 3a, así que va después.
 - `sshd_config` solo aplica a un perfil con shell `linux`, credenciales autenticadas,
   Linux remoto, un binario OpenSSH `sshd` y acceso como `root` o mediante `sudo -n`.
   Cualquier condición de aplicabilidad ausente produce `SKIP` con el motivo concreto.
+- Toda la recolección de configuración comparte una sola conexión autenticada. El
+  binario `sshd` debe resolverse desde el PATH del sistema, pertenecer a root y no ser
+  escribible por grupo u otros antes de que pueda ejecutarse con `sudo`.
 - La recolección ejecuta `sshd -T` y, por cada contexto de la política, añade
   `-C user=…`, `-C host=…` y `-C addr=…` (más `-C invalid-user` cuando corresponda).
   Un contexto tiene `name`, `user`, `host`, `addr`, `invalid_user` opcional y sus
@@ -63,9 +72,11 @@ La 3b usa el login de la 3a, así que va después.
   límites, keepalive, timeouts y PAM. También se comprueban propietario y permisos de
   `sshd_config`, fragmentos de `sshd_config.d` y llaves privadas de host. Toda la
   recolección es de solo lectura.
-- Las cuentas permitidas o bloqueadas y el acceso de `root` se evalúan contra las
-  directivas efectivas de cada contexto. No se intentan logins adicionales para esas
-  comprobaciones.
+- Las cuentas permitidas o bloqueadas y el acceso de `root` se validan comparando los
+  valores y patrones efectivos de `AllowUsers`, `DenyUsers`, `AllowGroups`,
+  `DenyGroups` y `PermitRootLogin` con la expectativa del contexto. No se intentan
+  logins adicionales, no se resuelve pertenencia NSS a grupos y no se calcula un
+  veredicto abstracto `expected_access`; la política expresa las directivas esperadas.
 
 ### Interfaz y catálogo
 
@@ -88,7 +99,18 @@ certificado y `keyboard-interactive` se prueban de extremo a extremo contra serv
 AsyncSSH locales controlados; el caso de certificado comprueba además que una CA
 rechazada no pueda caer silenciosamente a la llave sin certificado. Esta validación no
 equivale a una prueba manual contra equipos físicos, firmwares reales o clientes Claude;
-esas verificaciones externas no se dan por realizadas aquí.
+`sshd -T -C` se prueba con salidas controladas, no contra un proceso `sshd` real. Esas
+verificaciones externas no se dan por realizadas aquí.
+
+Dos límites quedan explícitos para una fase posterior:
+
+- Las conexiones autenticadas no fijan todavía una host key esperada. La resolución de
+  DNS sí se hace una sola vez y la conexión usa la IP concreta aceptada por la allowlist,
+  pero la identidad criptográfica del servidor no queda anclada; las credenciales de
+  esta fase son para la red interna de laboratorio autorizada.
+- Los permisos cubren las rutas estándar `/etc/ssh/sshd_config`,
+  `/etc/ssh/sshd_config.d/*.conf` y `/etc/ssh/ssh_host_*_key`. Un `Include` o `HostKey`
+  fuera de `/etc/ssh` requiere ampliar la recolección en otra fase.
 
 ## Decisiones
 
