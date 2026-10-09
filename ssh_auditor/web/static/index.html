@@ -8,87 +8,30 @@
     // Dark by default; apply a saved "light" choice before the page paints.
     try { if (localStorage.getItem("sshAuditor.theme") === "light") document.documentElement.dataset.theme = "light"; } catch (_) {}
   </script>
-  <style>
-    :root { color-scheme:dark;
-            --fg:#e6edf3; --mut:#9198a1; --bd:#30363d; --bg:#0d1117; --pan:#161b22; --btn:#21262d;
-            --pass:#3fb950; --warn:#d29922; --fail:#f85149; --info:#58a6ff; --skip:#9198a1; }
-    :root[data-theme="light"] { color-scheme:light;
-            --fg:#1f2328; --mut:#59636e; --bd:#d0d7de; --bg:#ffffff; --pan:#f6f8fa; --btn:#f6f8fa;
-            --pass:#1a7f37; --warn:#9a6700; --fail:#cf222e; --info:#0969da; --skip:#59636e; }
-    * { box-sizing:border-box; }
-    body { font-family:system-ui,-apple-system,sans-serif; margin:0; color:var(--fg);
-           background:var(--bg); line-height:1.5; }
-    header { background:var(--pan); border-bottom:1px solid var(--bd); padding:1rem 1.5rem;
-             display:flex; align-items:center; gap:1rem; flex-wrap:wrap; }
-    header h1 { margin:0; font-size:1.5rem; flex:1; }
-    header a { color:var(--info); text-decoration:none; font-size:1rem; margin-left:1rem; }
-    header .me { display:flex; align-items:center; gap:.5rem; margin:0; color:var(--mut); }
-    header .me input { width:14rem; }
-    main { padding:1.5rem; }
-    /* Each step has its own accent; tints are mixed with the theme background, so they
-       work in dark and light. */
-    .step { --accent:var(--info); border:1px solid var(--bd); border-left:4px solid var(--accent);
-            border-radius:8px; margin-bottom:1rem;
-            background:color-mix(in srgb, var(--accent) 7%, var(--bg)); }
-    .step.s1 { --accent:#388bfd; } .step.s2 { --accent:#a371f7; } .step.s3 { --accent:#3fb950; }
-    .step.s4 { --accent:#d29922; } .step.s5 { --accent:#db61a2; }
-    .step > summary { cursor:pointer; padding:.75rem 1rem; font-weight:600; list-style:none;
-                      background:color-mix(in srgb, var(--accent) 18%, var(--bg)); border-radius:4px 8px 8px 4px; }
-    .step[open] > summary { border-bottom:1px solid var(--bd); border-radius:4px 8px 0 0; }
-    .step > div { padding:1rem; }
-    label { display:block; font-size:1rem; color:var(--mut); margin:.5rem 0 .2rem; }
-    input, select, textarea { width:100%; padding:.45rem .6rem; border:1px solid var(--bd); border-radius:6px;
-                    font-size:1rem; background:var(--bg); color:var(--fg); }
-    textarea { min-height:7rem; resize:vertical; font-family:ui-monospace,monospace; }
-    .row { display:grid; grid-template-columns:1fr 1fr; gap:.75rem; }
-    .tests { display:grid; grid-template-columns:1fr; gap:.4rem; }
-    .tests label { display:flex; align-items:center; gap:.5rem; color:var(--fg); margin:0;
-                   font-size:1.05rem; }
-    .tests input { width:auto; }
-    button { background:#1f6feb; color:#fff; border:0; border-radius:6px; padding:.55rem 1rem;
-             font-size:1rem; cursor:pointer; }
-    button.sec { background:var(--btn); color:var(--fg); border:1px solid var(--bd); }
-    button.small { padding:.3rem .7rem; font-size:.95rem; }
-    button.danger { color:var(--fail); }
-    button:disabled { opacity:.5; cursor:not-allowed; }
-    .bar { display:flex; gap:.5rem; flex-wrap:wrap; margin:1rem 0; }
-    .tools { display:flex; gap:.4rem; flex-wrap:wrap; margin-top:.5rem; }
-    .itemmeta { margin-top:.3rem; }
-    .ok { color:var(--pass); } .err { color:var(--fail); }
-    .muted { color:var(--mut); font-size:1rem; }
-    table { border-collapse:collapse; width:100%; margin-top:.5rem; }
-    th,td { border:1px solid var(--bd); padding:.4rem .6rem; text-align:left; font-size:1rem;
-            vertical-align:top; overflow-wrap:break-word; }
-    .tw { overflow-x:auto; }
-    th { background:var(--pan); }
-    .st { font-weight:700; white-space:nowrap; }
-    .PASS{color:var(--pass)} .WARN{color:var(--warn)} .FAIL{color:var(--fail)}
-    .ERROR{color:var(--fail)} .INFO{color:var(--info)} .SKIP{color:var(--skip)}
-    #log, .log { font-family:ui-monospace,monospace; font-size:.95rem; background:var(--pan);
-           border:1px solid var(--bd); border-radius:6px; padding:.5rem; max-height:150px;
-           overflow:auto; white-space:pre-wrap; margin:0; }
-    .logtitle { font-weight:600; margin:.5rem 0 .25rem; }
-    tr.chg td { background:rgba(56,139,253,.10); }
-    .cmph { margin:1.75rem 0 .25rem; font-size:1.1rem; }
-    .mono { font-family:ui-monospace,monospace; font-size:.9rem; }
-    .hash { overflow-wrap:anywhere; }
-    .only { background:color-mix(in srgb, var(--warn) 28%, transparent); border-radius:3px; padding:0 .2rem; }
-    td details > summary { cursor:pointer; color:var(--mut); }
-  </style>
+  <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <header>
-    <h1>SSH Security Auditor
-      <a href="/claude.html">Connect with Claude</a>
-    </h1>
-    <label class="me">Your name
-      <input id="engineer" placeholder="optional, shown on scans and uploads" autocomplete="name">
-    </label>
-    <button class="sec small" id="themeBtn" type="button">Light mode</button>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="topbar">
+    <div class="topbar-in">
+      <div class="brand">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+             stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>
+        <h1>SSH Security Auditor<small>Internal lab audit of SSH devices</small></h1>
+      </div>
+      <a class="navlink" href="/claude.html">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+             stroke-linejoin="round" aria-hidden="true"><path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/></svg>
+        Connect with Claude</a>
+      <label class="me">Your name
+        <input id="engineer" placeholder="optional, shown on scans and uploads" autocomplete="name">
+      </label>
+      <button class="sec small" id="themeBtn" type="button">Light mode</button>
+    </div>
   </header>
-  <main>
+  <main id="main">
     <details class="step s1" open>
-      <summary>Step 1 · Target</summary>
+      <summary><span class="num" aria-hidden="true">1</span><span class="ttl"><span class="visually-hidden">Step 1 · </span>Target</span><span class="hint">Host, port and device profile</span></summary>
       <div>
         <div class="row">
           <div><label for="name">Name / identifier</label><input id="name" placeholder="lab-01"></div>
@@ -119,9 +62,9 @@
     </details>
 
     <details class="step s2">
-      <summary>Step 2 · Credentials</summary>
+      <summary><span class="num" aria-hidden="true">2</span><span class="ttl"><span class="visually-hidden">Step 2 · </span>Credentials</span><span class="hint">Optional authentication for this scan</span></summary>
       <div>
-        <p class="muted">Credentials are sent only with this scan. <strong>Save</strong>
+        <p class="note">Credentials are sent only with this scan. <strong>Save</strong>
         stores them as plain text in this browser for the current host and port;
         <strong>Forget</strong> removes that saved entry. This phase does not pin the
         server host key; use credentials only on the authorised internal lab network.</p>
@@ -172,7 +115,7 @@
     </details>
 
     <details class="step s3" open>
-      <summary>Step 3 · Tests</summary>
+      <summary><span class="num" aria-hidden="true">3</span><span class="ttl"><span class="visually-hidden">Step 3 · </span>Tests</span><span class="hint">Policy and checks to run</span></summary>
       <div>
         <div class="row">
           <div>
@@ -190,8 +133,8 @@
           </div>
         </div>
         <div class="bar">
-          <label style="margin:0"><input type="checkbox" id="selall" style="width:auto"> Select all</label>
-          <label style="margin:0"><input type="checkbox" id="confirmImpact" style="width:auto">
+          <label class="check"><input type="checkbox" id="selall"> Select all</label>
+          <label class="check"><input type="checkbox" id="confirmImpact">
             I approve medium/high-impact tests</label>
         </div>
         <div class="tests" id="tests"></div>
@@ -199,7 +142,7 @@
     </details>
 
     <details class="step s4" open>
-      <summary>Step 4 · Run and results</summary>
+      <summary><span class="num" aria-hidden="true">4</span><span class="ttl"><span class="visually-hidden">Step 4 · </span>Run and results</span><span class="hint">Scan, export and compare with a previous export</span></summary>
       <div>
         <div class="bar">
           <button id="run">Run scan</button>
@@ -211,11 +154,11 @@
         <div id="status" class="muted"></div>
         <div id="log" hidden></div>
         <div id="results"></div>
-        <hr style="margin:1.5rem 0;border:0;border-top:1px solid var(--bd)">
-        <h3 style="font-size:1.2rem">Compare with an export</h3>
+        <hr class="sep">
+        <h3 class="sub">Compare with an export</h3>
         <p class="muted">Load a JSON exported earlier and it is compared with the current scan.</p>
         <div class="bar">
-          <input type="file" id="cmpFile" accept="application/json" style="width:auto">
+          <input type="file" id="cmpFile" accept="application/json">
           <button class="sec" id="cmpBtn" disabled>Compare</button>
         </div>
         <div id="compare"></div>
@@ -223,7 +166,7 @@
     </details>
 
     <details class="step s5" open>
-      <summary>Step 5 · Compare two devices</summary>
+      <summary><span class="num" aria-hidden="true">5</span><span class="ttl"><span class="visually-hidden">Step 5 · </span>Compare two devices</span><span class="hint">Scan A and B now and diff them</span></summary>
       <div>
         <p class="muted">Scans both devices now, with the profile, policy and tests chosen
         above, and compares device B against device A.</p>

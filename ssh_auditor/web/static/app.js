@@ -500,7 +500,7 @@ function renderResults(sr) {
     for (const f of r.findings) {
       const rec = f.recommendation ? ` — <span class="muted">${esc(f.recommendation)}</span>` : "";
       rows.push(`<tr><td>${esc(r.category)}</td><td>${esc(r.test_id)}</td>
-        <td class="st ${f.status}">${f.status}</td>
+        <td><span class="st ${f.status}">${f.status}</span></td>
         <td>${esc(f.summary)}${rec}</td></tr>`);
     }
   }
