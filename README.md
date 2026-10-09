@@ -2,17 +2,17 @@
 
 Internal tool to audit the SSH posture of routers and other network devices:
 negotiation (algorithms, host keys, Terrapin, post-quantum KEX, FIPS-oriented path and
-authentication methods), functional authentication, device inventory and effective
-`sshd` configuration. Yescrypt and concurrency are planned next. Results are cached in
-server RAM for a limited time and can be exported from the web or Claude (MCP).
+authentication methods), functional authentication and effective `sshd` configuration.
+Yescrypt and concurrency are planned next. Results are cached in server RAM for a limited
+time and can be exported from the web or Claude (MCP).
 
 For use on the **internal network** only, against **authorised devices** (mandatory
 allowlist).
 
 ## Status
 
-Phases 1–3 are implemented: the plugin engine; connectivity, negotiation, authentication,
-inventory and effective `sshd -T -C` tests; API; web UI with live progress;
+Phases 1–3 are implemented: the plugin engine; connectivity, negotiation, authentication
+and effective `sshd -T -C` tests; API; web UI with live progress;
 JSON/HTML/CSV export; detailed comparison; shared device profiles and policies; and an
 MCP server for Claude Code and Claude Desktop. The full design is in `instrucciones.md`.
 

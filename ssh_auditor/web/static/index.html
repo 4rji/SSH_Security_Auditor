@@ -100,11 +100,6 @@
             </div>
             <div class="muted" id="profileMsg"></div>
           </div>
-          <div class="row">
-            <div><label for="model">Model</label><input id="model" placeholder="Filled in automatically if the profile can detect it"></div>
-            <div><label for="firmware">Firmware</label><input id="firmware" placeholder="Filled in automatically if the profile can detect it"></div>
-          </div>
-          <label for="tags">Tags</label><input id="tags" placeholder="lab, regression, rack-2 (comma separated)">
         </div>
       </section>
 
@@ -176,7 +171,7 @@
             <p class="kick">Step 3 · Tests</p>
             <h2 id="h-tests">What should it check?</h2>
             <p class="help">The policy sets the thresholds every test is graded against. Medium and
-            high-impact tests start unchecked and only run after you approve them.</p>
+            high-impact tests stay locked until you approve them at the bottom.</p>
           </div>
         </header>
         <div class="panel-body">
@@ -195,10 +190,17 @@
           </div>
           <div class="bar">
             <label class="check"><input type="checkbox" id="selall"> Select all</label>
+          </div>
+          <div id="tests"></div>
+          <div class="tgroup risky" id="riskyGroup" hidden>
+            <h3 class="tgh"><svg class="ico" aria-hidden="true"><use href="#i-alert"/></svg>Medium and high impact</h3>
+            <p class="muted">These try failed logins on purpose or open several sessions, which can trigger
+            lockouts or alerts on the device.</p>
             <label class="check risk"><input type="checkbox" id="confirmImpact">
               I approve medium/high-impact tests</label>
+            <p class="muted" id="riskyHint"></p>
+            <div class="tests" id="testsRisky"></div>
           </div>
-          <div class="tests" id="tests"></div>
         </div>
       </section>
 

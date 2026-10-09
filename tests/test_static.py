@@ -60,12 +60,27 @@ def test_profile_metadata_exposes_remote_commands_before_a_scan():
     js = (base / "app.js").read_text()
 
     assert 'id="profileMeta"' in idx
-    assert 'id="model"' in idx
-    assert 'id="firmware"' in idx
-    assert 'id="tags"' in idx
+    # The form no longer asks for model, firmware or tags.
+    for field in ("model", "firmware", "tags"):
+        assert f'id="{field}"' not in idx
+        assert f'$("{field}")' not in js
     assert "it.shell" in js
     assert "it.safe_command" in js
-    assert "Object.entries(it.detection || {})" in js
-    assert 'detectors.join("; ")' in js
     # Metadata is rendered as text, so custom profile commands cannot inject markup.
     assert "$(k.meta).textContent = text" in js
+
+
+def test_risky_tests_are_grouped_and_locked_until_approved():
+    base = Path("ssh_auditor/web/static")
+    idx = (base / "index.html").read_text()
+    js = (base / "app.js").read_text()
+
+    # The approval lives inside the medium/high-impact group it unlocks.
+    group = idx[idx.index('id="riskyGroup"'):]
+    assert group.index('id="confirmImpact"') < group.index('id="testsRisky"')
+    assert 'addEventListener("change", updateRiskyTests)' in js
+    assert "c.disabled = !approved" in js
+    assert "if (!approved) c.checked = false" in js
+    # "Select all" never ticks a locked test.
+    assert '.tchk:not(:disabled)' in js
+    assert 'const RISKY_IMPACTS = ["medium", "high"]' in js

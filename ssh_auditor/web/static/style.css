@@ -163,7 +163,23 @@ input[type="file"]::file-selector-button { font: inherit; font-weight: 600; marg
          cursor: pointer; color: var(--fg); font-size: .92rem; font-weight: 500; letter-spacing: 0; text-transform: none;
          background: var(--well); border: 1px solid var(--bd); border-radius: 9px; transition: border-color .15s ease; }
 .check:hover { border-color: var(--bd-strong); }
-.check.risk:has(input:checked) { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 10%, var(--well)); }
+.check.risk { color: var(--warn); font-weight: 600; border-color: color-mix(in srgb, var(--warn) 55%, var(--bd)); }
+.check.risk input { accent-color: var(--warn); }
+.check.risk:hover { border-color: var(--warn); }
+.check.risk:has(input:checked) { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 16%, var(--well)); }
+
+/* Step 3: one group per category, then the locked medium/high-impact group. */
+.tgroup + .tgroup { margin-top: 1.4rem; }
+.tgh { display: flex; align-items: center; flex-wrap: wrap; gap: .25rem .6rem; margin: 0 0 .6rem; font-size: 1rem; font-weight: 600; }
+.tgh .cat { font: 700 .72rem/1 var(--mono); color: var(--acc); background: var(--acc-soft); padding: .3rem .45rem;
+            border: 1px solid color-mix(in srgb, var(--acc) 35%, transparent); border-radius: 6px; }
+.tgh .muted { font-weight: 400; font-size: .85rem; }
+#tests:empty::before { content: "Loading the test catalog…"; color: var(--dim); font-size: .9rem; }
+.tgroup.risky { margin-top: 1.75rem; padding: 1rem 1.1rem 1.1rem; border: 1px dashed color-mix(in srgb, var(--warn) 60%, transparent);
+                border-radius: 12px; background: color-mix(in srgb, var(--warn) 5%, transparent); }
+.tgroup.risky .tgh { color: var(--warn); }
+.tgroup.risky > p { margin: 0 0 .75rem; }
+.tgroup.risky #riskyHint { margin: .5rem 0 .75rem; font-size: .85rem; }
 
 .tests { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: .6rem; }
 .tests label { display: grid; grid-template-columns: auto 1fr; align-items: start; align-content: start; column-gap: .75rem; margin: 0; padding: .8rem .9rem;
@@ -175,7 +191,12 @@ input[type="file"]::file-selector-button { font: inherit; font-weight: 600; marg
   background: color-mix(in srgb, var(--cta) 8%, var(--well)); }
 .tests label input { margin-top: .1rem; }
 .tests label .muted { grid-column: 2; display: block; font: 400 .74rem/1.5 var(--mono); color: var(--mut); margin-top: .3rem; }
-.tests:empty::before { content: "Loading the test catalog…"; color: var(--dim); font-size: .9rem; }
+.tests label.risky { border-color: color-mix(in srgb, var(--warn) 35%, var(--bd-soft)); }
+.tests label.risky input { accent-color: var(--warn); }
+.tests label.risky:has(input:checked) { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 10%, var(--well)); }
+.tests label:has(input:disabled) { opacity: .5; cursor: not-allowed; }
+.tests label:has(input:disabled):hover { border-color: color-mix(in srgb, var(--warn) 35%, var(--bd-soft)); }
+.tests label input:disabled { cursor: not-allowed; }
 
 /* ---- Buttons --------------------------------------------------------------------- */
 button { display: inline-flex; align-items: center; justify-content: center; gap: .5rem; min-height: 44px;
@@ -227,6 +248,15 @@ p.WARN { padding: .8rem 1rem; border: 1px solid var(--note-bd); border-radius: 1
 .kpi .n { display: block; font: 700 2.1rem/1 var(--mono); letter-spacing: -.03em; }
 .kpi .l { display: block; margin-top: .45rem; font: 600 .7rem/1 var(--mono); letter-spacing: .14em; color: var(--mut); }
 .kpi.zero .n { color: var(--dim); }
+
+/* Result tabs: "All tests" plus one per test; the dot is the test's overall status. */
+.rtabs { display: flex; flex-wrap: wrap; gap: .4rem; margin: 1.25rem 0 0; }
+.rtab { min-height: 38px; padding: .3rem .85rem; gap: .45rem; font-size: .86rem; font-weight: 500;
+        color: var(--mut); background: var(--well); border-color: var(--bd); }
+.rtab:hover { color: var(--fg); background: var(--raise); border-color: var(--bd-strong); }
+.rtab[aria-selected="true"] { color: var(--fg); background: var(--acc-soft); border-color: var(--acc); }
+.rtab .sd { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.rmeta { margin: .9rem 0 0; font-size: .9rem; color: var(--mut); }
 
 /* ---- Tables ---------------------------------------------------------------------- */
 .tw { overflow-x: auto; margin-top: .9rem; border: 1px solid var(--bd); border-radius: 10px; background: var(--well); }

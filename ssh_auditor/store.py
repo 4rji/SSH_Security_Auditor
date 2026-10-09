@@ -156,30 +156,23 @@ class Limits(_Strict):
     max_concurrency: int = Field(4, ge=1, le=64)
 
 
-class Detection(_Strict):
-    """Read-only profile commands which print one inventory value each."""
-
-    model: str = Field("", max_length=512)
-    firmware: str = Field("", max_length=512)
-
-    @field_validator("model", "firmware")
-    @classmethod
-    def command_must_be_one_line(cls, value: str) -> str:
-        value = value.strip()
-        if any(c in value for c in ("\x00", "\r", "\n")):
-            raise ValueError("detection commands must be a single line")
-        return value
-
-
 class Profile(_Strict):
     id: str
     name: str = ""
     description: str = ""
     shell: Literal["linux", "router-cli"] = "linux"
     safe_command: str = Field("id", min_length=1, max_length=512)
-    detection: Detection = Field(default_factory=Detection)
     limits: Limits = Field(default_factory=Limits)
     policy: str = "base"
+
+    @model_validator(mode="before")
+    @classmethod
+    def drop_legacy_detection(cls, data):
+        # Profiles used to carry model/firmware detection commands. That test was
+        # removed; uploaded profiles that still have the key must keep loading.
+        if isinstance(data, dict):
+            data = {k: v for k, v in data.items() if k != "detection"}
+        return data
 
     @field_validator("safe_command")
     @classmethod
@@ -298,7 +291,6 @@ class Store:
                         "policy": doc.policy,
                         "shell": doc.shell,
                         "safe_command": doc.safe_command,
-                        "detection": doc.detection.model_dump(),
                         "limits": doc.limits.model_dump(),
                     })
                 if not builtin:

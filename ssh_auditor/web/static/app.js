@@ -49,6 +49,7 @@ async function init() {
   $("engineer").value = local.get(ENGINEER_KEY, "");
   $("engineer").addEventListener("change", () => local.set(ENGINEER_KEY, $("engineer").value.trim()));
   setupCredentials();
+  setupResultsTabs();
 
   // Profiles and policies
   for (const kind of Object.keys(KINDS)) {
@@ -64,17 +65,11 @@ async function init() {
   } catch (e) { setStatus("Could not load profiles and policies: " + e.message); }
 
   // Test catalog
+  $("confirmImpact").addEventListener("change", updateRiskyTests);
   try {
     const tests = await j("/api/v1/tests");
     testNames = Object.fromEntries(tests.map((t) => [t.id, t.name]));
-    $("tests").innerHTML = tests.map((t) => {
-      const auth = t.requires_auth ? ` · auth ${t.credential_method || "any"}` : "";
-      const privilege = t.privilege && t.privilege !== "none" ? ` · ${t.privilege}` : "";
-      const actions = (t.actions || []).length ? ` — ${t.actions.join("; ")}` : "";
-      const checked = t.impact === "medium" || t.impact === "high" ? "" : " checked";
-      return `<label><input type="checkbox" class="tchk" value="${esc(t.id)}"${checked}>
-       ${esc(t.name)} <span class="muted">· ${esc(t.category)} · impact ${esc(t.impact)}${esc(auth)}${esc(privilege)}${esc(actions)}</span></label>`;
-    }).join("");
+    renderTests(tests);
   } catch (e) { setStatus("Could not load the test catalog: " + e.message); }
 
   // Restore the last result of this browser tab (kept until "Clear results").
@@ -85,7 +80,7 @@ async function init() {
   if (lastResult) checkRestoredResult();
 
   $("selall").addEventListener("change", (e) => {
-    document.querySelectorAll(".tchk").forEach((c) => (c.checked = e.target.checked));
+    document.querySelectorAll(".tchk:not(:disabled)").forEach((c) => (c.checked = e.target.checked));
   });
   $("run").addEventListener("click", runScan);
   $("exportJson").addEventListener("click", () => exportAs("json"));
@@ -226,10 +221,7 @@ function updateItemMeta(kind) {
         (it.uploaded_at ? ` on ${new Date(it.uploaded_at).toLocaleString()}` : "");
     if (it.description) text += ` — ${it.description}`;
     if (kind === "profiles") {
-      const detectors = Object.entries(it.detection || {}).filter(([, command]) => command)
-        .map(([field, command]) => `${field}: ${command}`);
       text += ` · shell ${it.shell || "unknown"} · harmless command: ${it.safe_command || "none"}`;
-      if (detectors.length) text += ` · detection: ${detectors.join("; ")}`;
     }
   }
   $(k.meta).textContent = text;
@@ -313,6 +305,58 @@ async function deleteItem(kind, it) {
   }
 }
 
+// --- test catalog (Step 3) ---------------------------------------------------------
+
+// Tests are grouped by category, A to D. Medium and high-impact tests go in a group of
+// their own, locked until the engineer approves them.
+const CATEGORIES = {
+  A: ["Connectivity", "no login"],
+  B: ["SSH negotiation", "no login"],
+  C: ["Authentication", "logs in with the Step 2 credentials"],
+  D: ["Effective sshd configuration", "logs in and reads sshd -T"],
+};
+const RISKY_IMPACTS = ["medium", "high"];
+
+function categoryName(c) { return (CATEGORIES[c] || [`Category ${c}`])[0]; }
+
+function testCard(t, risky) {
+  const cat = risky ? `${categoryName(t.category)} · ` : "";
+  const auth = t.requires_auth ? ` · auth ${t.credential_method || "any"}` : "";
+  const privilege = t.privilege && t.privilege !== "none" ? ` · ${t.privilege}` : "";
+  const actions = (t.actions || []).length ? ` — ${t.actions.join("; ")}` : "";
+  return `<label${risky ? ' class="risky"' : ""}><input type="checkbox" class="tchk${risky ? " risky" : ""}"
+     value="${esc(t.id)}"${risky ? "" : " checked"}>
+     ${esc(t.name)} <span class="muted">${esc(cat)}impact ${esc(t.impact)}${esc(auth)}${esc(privilege)}${esc(actions)}</span></label>`;
+}
+
+function renderTests(tests) {
+  const isRisky = (t) => RISKY_IMPACTS.includes(t.impact);
+  const safe = tests.filter((t) => !isRisky(t));
+  // Stable sort: tests keep the catalog order inside their category.
+  const risky = tests.filter(isRisky).sort((a, b) => a.category.localeCompare(b.category));
+  $("tests").innerHTML = [...new Set(safe.map((t) => t.category))].sort().map((c) => {
+    const note = (CATEGORIES[c] || [])[1];
+    return `<div class="tgroup"><h3 class="tgh"><span class="cat">${esc(c)}</span>${esc(categoryName(c))}${
+      note ? ` <span class="muted">${esc(note)}</span>` : ""}</h3>
+      <div class="tests">${safe.filter((t) => t.category === c).map((t) => testCard(t, false)).join("")}</div></div>`;
+  }).join("");
+  $("testsRisky").innerHTML = risky.map((t) => testCard(t, true)).join("");
+  $("riskyGroup").hidden = !risky.length;
+  updateRiskyTests();
+}
+
+// Without the approval the risky tests can't be selected; withdrawing it clears them.
+function updateRiskyTests() {
+  const approved = $("confirmImpact").checked;
+  document.querySelectorAll(".tchk.risky").forEach((c) => {
+    c.disabled = !approved;
+    if (!approved) c.checked = false;
+  });
+  $("riskyHint").textContent = approved
+    ? "Approved: choose which of these to run."
+    : "Locked: tick the approval above to choose any of them.";
+}
+
 // --- scans -------------------------------------------------------------------------
 
 function setStatus(msg) { $("status").textContent = msg; }
@@ -323,6 +367,7 @@ function enableExports(on) {
 
 function clearResults() {
   lastResult = null;
+  resultsTab = "";
   try { sessionStorage.removeItem("lastResult"); } catch (_) {}
   $("results").innerHTML = "";
   $("compare").innerHTML = "";
@@ -361,12 +406,7 @@ function scanBody(host, port, useForm = false) {
   if (credential && (credential.method !== "none" || credential.username)) {
     body.credentials = credential;
   }
-  if (sameTarget) {
-    body.target_name = $("name").value.trim();
-    body.model = $("model").value.trim();
-    body.firmware = $("firmware").value.trim();
-    body.tags = $("tags").value.split(",").map((x) => x.trim()).filter(Boolean);
-  }
+  if (sameTarget) body.target_name = $("name").value.trim();
   return body;
 }
 
@@ -435,8 +475,6 @@ async function runScan() {
   try {
     lastResult = await streamScan(scanBody(host, $("port").value, true), logTo($("log")));
     try { sessionStorage.setItem("lastResult", JSON.stringify(lastResult)); } catch (_) {}
-    if (lastResult.model) $("model").value = lastResult.model;
-    if (lastResult.firmware) $("firmware").value = lastResult.firmware;
     renderResults(lastResult);
     enableExports(true);
     setStatus("Finished.");
@@ -494,15 +532,67 @@ async function runLiveCompare() {
   }
 }
 
+// Results get one tab per test (plus "All tests"), so a single test's findings can be
+// read on their own. The chosen tab survives a new scan if that test ran again.
+let resultsTab = "";
+
 function renderResults(sr) {
+  if (!sr.results.some((r) => r.test_id === resultsTab)) resultsTab = "";
+  const tab = (id, label, status) => `<button type="button" role="tab" class="rtab"
+      id="rtab-${esc(id || "all")}" data-test="${esc(id)}" aria-controls="resultsPanel">${
+      status ? `<span class="sd ${esc(status)}" aria-hidden="true"></span>` : ""}${esc(label)}${
+      status ? `<span class="visually-hidden"> · ${esc(status)}</span>` : ""}</button>`;
+  $("results").innerHTML = `<div class="rtabs" role="tablist" aria-label="Results by test">${
+    tab("", "All tests")}${sr.results.map((r) =>
+      tab(r.test_id, testNames[r.test_id] || r.test_id, r.status)).join("")}</div>
+    <div id="resultsPanel" role="tabpanel" tabindex="0"></div>`;
+  selectResultsTab(resultsTab);
+}
+
+function selectResultsTab(testId) {
+  resultsTab = testId;
+  document.querySelectorAll('#results [role="tab"]').forEach((t) => {
+    const on = t.dataset.test === testId;
+    t.setAttribute("aria-selected", String(on));
+    t.tabIndex = on ? 0 : -1;
+    if (on) $("resultsPanel").setAttribute("aria-labelledby", t.id);
+  });
+  renderResultsPanel(lastResult, testId);
+}
+
+function setupResultsTabs() {
+  const box = $("results");
+  box.addEventListener("click", (e) => {
+    const tab = e.target.closest('[role="tab"]');
+    if (tab) selectResultsTab(tab.dataset.test);
+  });
+  // Arrow keys, Home and End move between tabs (WAI-ARIA tabs pattern).
+  box.addEventListener("keydown", (e) => {
+    const tab = e.target.closest('[role="tab"]');
+    if (!tab) return;
+    const tabs = Array.from(box.querySelectorAll('[role="tab"]'));
+    const i = tabs.indexOf(tab);
+    const next = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: tabs.length - 1 }[e.key];
+    if (next === undefined) return;
+    e.preventDefault();
+    const target = tabs[(next + tabs.length) % tabs.length];
+    selectResultsTab(target.dataset.test);
+    target.focus();
+  });
+}
+
+// Counters and table of the selected tab: every test, or only the one chosen.
+function renderResultsPanel(sr, testId) {
+  const shown = testId ? sr.results.filter((r) => r.test_id === testId) : sr.results;
   const rows = [];
   const counts = {};
-  for (const r of sr.results) {
+  for (const r of shown) {
     for (const f of r.findings) {
       counts[f.status] = (counts[f.status] || 0) + 1;
       const rec = f.recommendation ? ` — <span class="muted">${esc(f.recommendation)}</span>` : "";
-      rows.push(`<tr data-st="${esc(f.status)}"><td>${esc(r.category)}</td><td class="tid">${esc(r.test_id)}</td>
-        <td><span class="st ${f.status}">${f.status}</span></td>
+      const lead = testId ? "" : `<td>${esc(r.category)}</td><td class="tid">${esc(r.test_id)}</td>`;
+      rows.push(`<tr data-st="${esc(f.status)}" title="${esc(f.id)}">${lead}
+        <td><span class="st ${esc(f.status)}">${esc(f.status)}</span></td>
         <td>${esc(f.summary)}${rec}</td></tr>`);
     }
   }
@@ -511,8 +601,14 @@ function renderResults(sr) {
     .filter((s) => counts[s] || ["PASS", "WARN", "FAIL"].includes(s))
     .map((s) => `<div class="kpi ${s}${counts[s] ? "" : " zero"}"><span class="n">${counts[s] || 0}</span>
       <span class="l">${s}</span></div>`).join("");
-  $("results").innerHTML = `<div class="kpis">${kpis}</div><div class="tw"><table><thead><tr><th>Cat.</th><th>Test</th>
-    <th>Status</th><th>Result</th></tr></thead><tbody>${rows.join("")}</tbody></table></div>`;
+  const r = shown[0];
+  const meta = testId && r ? `<p class="rmeta">${statusText(r.status)} <span class="mono">${esc(r.test_id)}</span>
+    · category ${esc(r.category)} · ${esc(r.duration_ms)} ms</p>` : "";
+  const head = (testId ? "" : "<th>Cat.</th><th>Test</th>") + "<th>Status</th><th>Result</th>";
+  const table = rows.length
+    ? `<div class="tw"><table><thead><tr>${head}</tr></thead><tbody>${rows.join("")}</tbody></table></div>`
+    : `<p class="muted">No findings.</p>`;
+  $("resultsPanel").innerHTML = `<div class="kpis">${kpis}</div>${meta}${table}`;
 }
 
 function exportAs(fmt) { exportScan(lastResult, fmt); }
@@ -553,8 +649,7 @@ const FIELD_LABEL = {
   pq_kex_algs: "Post-quantum algorithms", aead: "AEAD ciphers", etm: "Encrypt-then-MAC MACs",
   fips_path: "FIPS-oriented path", auth_methods: "Authentication methods",
   auth_methods_error: "Error reading methods", host_key_fingerprints: "Host key fingerprint",
-  profile: "Device profile", model: "Detected model", firmware: "Detected firmware",
-  commands: "Detection commands", errors: "Detection errors", applicable: "Applicable",
+  profile: "Device profile", applicable: "Applicable",
   skip_reason: "Skip reason", runner: "Privilege path", version: "OpenSSH version",
   system: "Remote system", default: "Default sshd settings", contexts: "Match contexts",
   malformed: "Ignored sshd output",
@@ -659,8 +754,6 @@ function renderCompare(res, target, view) {
   const metaRows = [
     ["Device", `${a.target_host}:${a.port}`, `${b.target_host}:${b.port}`],
     ["Name", a.target_name || "—", b.target_name || "—"],
-    ["Model", a.model || "—", b.model || "—"],
-    ["Firmware", a.firmware || "—", b.firmware || "—"],
     ["Date", when(a.started_at), when(b.started_at)],
     ["Profile", a.profile, b.profile],
     ["Policy", a.policy_name, b.policy_name],

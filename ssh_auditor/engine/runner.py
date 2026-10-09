@@ -134,17 +134,11 @@ async def run_scan(
         results.append(tr)
         emit({"type": "test_done", "test_id": tid, "status": tr.status.value})
 
-    inventory = next((r.evidence.data for r in results
-                      if r.test_id == "device_inventory"), {})
-    model = _redact_text(req.model.strip() or (inventory.get("model") or ""), secrets)
-    firmware = _redact_text(
-        req.firmware.strip() or (inventory.get("firmware") or ""), secrets,
-    )
-
     sr = ScanResult(
         scan_id=scan_id, target_host=req.target_host, port=req.port, profile=req.profile,
         target_name=_redact_text(req.target_name.strip(), secrets),
-        model=model, firmware=firmware,
+        model=_redact_text(req.model.strip(), secrets),
+        firmware=_redact_text(req.firmware.strip(), secrets),
         tags=[_redact_text(tag, secrets) for tag in req.tags],
         policy_name=req.policy, started_at=started, finished_at=datetime.now(timezone.utc),
         status="done", results=results, tool_version=tool_version,

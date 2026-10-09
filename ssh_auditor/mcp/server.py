@@ -126,7 +126,7 @@ def build_mcp(service: AuditService) -> MCPServer:
             doc = service.load("profiles", p["id"])
             profiles.append({
                 **p, "shell": doc.shell, "safe_command": doc.safe_command,
-                "detection": doc.detection.model_dump(), "limits": doc.limits.model_dump(),
+                "limits": doc.limits.model_dump(),
             })
         return {"device_profiles": profiles, "policies": service.stores["policies"].list()}
 
@@ -149,8 +149,7 @@ def build_mcp(service: AuditService) -> MCPServer:
         target_host: IP or FQDN inside the server's allowlist. tests: ids from
         list_tests. profile: device profile id from list_profiles. policy: empty means
         the profile's policy. run_by: the engineer's name, shown in the export.
-        target_name, model, firmware and tags: optional inventory supplied by the engineer;
-        blank model/firmware values can be detected by the selected device profile.
+        target_name, model, firmware and tags: optional inventory supplied by the engineer.
         credentials: a write-only object. Shapes: {method: "none", username?};
         {method: "password", username, password}; {method: "private_key", username,
         private_key, private_key_passphrase?}; {method: "certificate", username,

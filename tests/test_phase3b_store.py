@@ -3,25 +3,18 @@ import pytest
 from ssh_auditor.store import Policy, Profile, StoreError, parse
 
 
-def test_profile_accepts_bounded_detection_commands():
-    profile = Profile.model_validate({
-        "id": "linux-box",
-        "detection": {"model": "  cat /etc/device-model  ", "firmware": "uname -r"},
-    })
-    assert profile.detection.model == "cat /etc/device-model"
-    assert profile.detection.firmware == "uname -r"
+def test_profile_ignores_legacy_detection_commands():
+    # Uploaded profiles from before the detection test was removed must keep loading.
+    text = "id: linux-box\ndetection:\n  model: cat /etc/device-model\n  firmware: uname -r\n"
+    profile = parse("profiles", text)
+    assert profile.id == "linux-box"
+    assert "detection" not in profile.model_dump()
 
 
 @pytest.mark.parametrize("command", ["", "id\nreboot", "x\x00y", "x" * 513])
 def test_profile_rejects_unsafe_or_unbounded_safe_command(command):
     with pytest.raises(ValueError):
         Profile.model_validate({"id": "bad", "safe_command": command})
-
-
-@pytest.mark.parametrize("command", ["uname -r\nreboot", "x\x00y", "x" * 513])
-def test_profile_rejects_unbounded_or_multiline_detection_commands(command):
-    with pytest.raises(ValueError):
-        Profile.model_validate({"id": "bad", "detection": {"model": command}})
 
 
 def test_policy_accepts_typed_sshd_expectations_and_contexts():
