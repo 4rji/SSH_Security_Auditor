@@ -8,195 +8,275 @@
     // Dark by default; apply a saved "light" choice before the page paints.
     try { if (localStorage.getItem("sshAuditor.theme") === "light") document.documentElement.dataset.theme = "light"; } catch (_) {}
   </script>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2322d3ee' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z'/%3E%3Cpath d='m9 12 2 2 4-4'/%3E%3C/svg%3E">
+  <link rel="preload" href="/fonts/space-grotesk.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></symbol>
+      <symbol id="i-play" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></symbol>
+      <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></symbol>
+      <symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></symbol>
+      <symbol id="i-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></symbol>
+      <symbol id="i-save" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+      <symbol id="i-compare" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><path d="M11 18H8a2 2 0 0 1-2-2V9"/></symbol>
+      <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+      <symbol id="i-plug" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/></symbol>
+    </defs>
+  </svg>
   <a class="skip" href="#main">Skip to content</a>
-  <header class="topbar">
-    <div class="topbar-in">
-      <div class="brand">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-             stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>
-        <h1>SSH Security Auditor<small>Internal lab audit of SSH devices</small></h1>
+
+  <aside class="side">
+    <a class="brand" href="/">
+      <span class="brand-mark"><svg><use href="#i-shield"/></svg></span>
+      <span class="brand-name">SSH Security Auditor<small>Lab audit console</small></span>
+    </a>
+    <nav aria-label="Steps">
+      <p class="nav-label">Workflow</p>
+      <div class="nav">
+        <a href="#step-target"><span class="n">01</span><span class="t">Target<small>Device and profile</small></span></a>
+        <a href="#step-credentials"><span class="n">02</span><span class="t">Credentials<small>Optional login</small></span></a>
+        <a href="#step-tests"><span class="n">03</span><span class="t">Tests<small>Policy and checks</small></span></a>
+        <a href="#step-run"><span class="n">04</span><span class="t">Run &amp; results<small>Scan, export, diff</small></span></a>
+        <a href="#step-devices"><span class="n">05</span><span class="t">Device A vs B<small>Live comparison</small></span></a>
       </div>
-      <a class="navlink" href="/claude.html">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-             stroke-linejoin="round" aria-hidden="true"><path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/></svg>
-        Connect with Claude</a>
+    </nav>
+    <div class="side-foot">
+      <div class="nav">
+        <a class="navlink-claude" href="/claude.html"><svg class="ico"><use href="#i-plug"/></svg><span class="t">Connect with Claude<small>Use the auditor over MCP</small></span></a>
+      </div>
       <label class="me">Your name
-        <input id="engineer" placeholder="optional, shown on scans and uploads" autocomplete="name">
+        <input id="engineer" placeholder="Shown on scans and uploads" autocomplete="name">
       </label>
       <button class="sec small" id="themeBtn" type="button">Light mode</button>
     </div>
-  </header>
-  <main id="main">
-    <details class="step s1" open>
-      <summary><span class="num" aria-hidden="true">1</span><span class="ttl"><span class="visually-hidden">Step 1 · </span>Target</span><span class="hint">Host, port and device profile</span></summary>
-      <div>
-        <div class="row">
-          <div><label for="name">Name / identifier</label><input id="name" placeholder="lab-01"></div>
-          <div><label for="host">IP or FQDN</label><input id="host" placeholder="10.0.0.5"></div>
+  </aside>
+
+  <div class="content">
+    <main id="main">
+      <header class="page-head">
+        <div>
+          <p class="eyebrow">SSH hardening audit</p>
+          <h1>Audit a device</h1>
+          <p class="lead">Point it at a host, pick what to check, and get a graded report you can
+          export or compare against another scan or device.</p>
         </div>
-        <div class="row">
-          <div><label for="port">SSH port</label><input id="port" type="number" min="1" max="65535" value="22"></div>
+        <div class="head-actions">
+          <span class="chip" id="targetChip"><span class="dot"></span><span>No target yet</span></span>
+          <button class="big" id="runTop" type="button"><svg class="ico"><use href="#i-play"/></svg>Run scan</button>
+        </div>
+      </header>
+
+      <section class="panel" id="step-target" aria-labelledby="h-target">
+        <header class="panel-head">
+          <span class="num" aria-hidden="true">01</span>
+          <div>
+            <p class="kick">Step 1 · Target</p>
+            <h2 id="h-target">Which device are you auditing?</h2>
+            <p class="help">Enter its address and pick the profile for its vendor. The profile decides which
+            commands may run on the device and which policy is selected by default.</p>
+          </div>
+        </header>
+        <div class="panel-body">
+          <div class="grid-3">
+            <div><label for="host">IP or FQDN</label><input id="host" placeholder="10.0.0.5" spellcheck="false"></div>
+            <div><label for="port">SSH port</label><input id="port" type="number" min="1" max="65535" value="22"></div>
+            <div><label for="name">Name / identifier</label><input id="name" placeholder="lab-01"></div>
+          </div>
           <div>
             <label for="profile">Device profile</label>
             <select id="profile"></select>
             <div class="itemmeta muted" id="profileMeta"></div>
             <div class="tools" data-kind="profiles">
-              <button class="sec small" data-act="download">Download</button>
-              <button class="sec small" data-act="example">Download example</button>
-              <button class="sec small" data-act="upload">Upload…</button>
-              <button class="sec small danger" data-act="delete" hidden>Delete</button>
+              <button class="sec small" data-act="download"><svg class="ico"><use href="#i-download"/></svg>Download</button>
+              <button class="sec small" data-act="example"><svg class="ico"><use href="#i-file"/></svg>Download example</button>
+              <button class="sec small" data-act="upload"><svg class="ico"><use href="#i-upload"/></svg>Upload…</button>
+              <button class="sec small danger" data-act="delete" hidden><svg class="ico"><use href="#i-trash"/></svg>Delete</button>
               <input type="file" accept=".yaml,.yml" hidden>
             </div>
             <div class="muted" id="profileMsg"></div>
           </div>
-        </div>
-        <div class="row">
-          <div><label for="model">Model</label><input id="model" placeholder="detected when the profile provides a command"></div>
-          <div><label for="firmware">Firmware</label><input id="firmware" placeholder="detected when the profile provides a command"></div>
-        </div>
-        <label for="tags">Tags</label><input id="tags" placeholder="lab, regression, rack-2 (comma separated)">
-      </div>
-    </details>
-
-    <details class="step s2">
-      <summary><span class="num" aria-hidden="true">2</span><span class="ttl"><span class="visually-hidden">Step 2 · </span>Credentials</span><span class="hint">Optional authentication for this scan</span></summary>
-      <div>
-        <p class="note">Credentials are sent only with this scan. <strong>Save</strong>
-        stores them as plain text in this browser for the current host and port;
-        <strong>Forget</strong> removes that saved entry. This phase does not pin the
-        server host key; use credentials only on the authorised internal lab network.</p>
-        <div class="row">
-          <div><label for="authMethod">Authentication</label>
-            <select id="authMethod">
-              <option value="none">No authentication / username only</option>
-              <option value="password">Username and password</option>
-              <option value="private_key">Private key</option>
-              <option value="certificate">SSH certificate</option>
-              <option value="keyboard_interactive">Keyboard-interactive</option>
-            </select>
+          <div class="row">
+            <div><label for="model">Model</label><input id="model" placeholder="Filled in automatically if the profile can detect it"></div>
+            <div><label for="firmware">Firmware</label><input id="firmware" placeholder="Filled in automatically if the profile can detect it"></div>
           </div>
-          <div class="credential-field" data-methods="none password private_key certificate keyboard_interactive">
-            <label for="authUsername">Username</label>
-            <input id="authUsername" autocomplete="username">
-          </div>
+          <label for="tags">Tags</label><input id="tags" placeholder="lab, regression, rack-2 (comma separated)">
         </div>
-        <div class="credential-field" data-methods="password">
-          <label for="authPassword">Password</label>
-          <input id="authPassword" type="password" autocomplete="current-password">
-        </div>
-        <div class="credential-field" data-methods="private_key certificate">
-          <label for="authPrivateKey">Private key</label>
-          <textarea id="authPrivateKey" autocomplete="off" spellcheck="false"
-                    placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"></textarea>
-        </div>
-        <div class="credential-field" data-methods="private_key certificate">
-          <label for="authPassphrase">Private-key passphrase (optional)</label>
-          <input id="authPassphrase" type="password" autocomplete="off">
-        </div>
-        <div class="credential-field" data-methods="certificate">
-          <label for="authCertificate">SSH certificate</label>
-          <textarea id="authCertificate" autocomplete="off" spellcheck="false"
-                    placeholder="ssh-ed25519-cert-v01@openssh.com …"></textarea>
-        </div>
-        <div class="credential-field" data-methods="keyboard_interactive">
-          <label for="authResponses">Keyboard-interactive responses</label>
-          <textarea id="authResponses" autocomplete="off" spellcheck="false"
-                    placeholder="One response per line, in prompt order"></textarea>
-        </div>
-        <div class="bar">
-          <button type="button" id="credentialSave">Save</button>
-          <button type="button" class="sec danger" id="credentialForget">Forget</button>
-        </div>
-        <div class="muted" id="credentialMsg"></div>
-      </div>
-    </details>
+      </section>
 
-    <details class="step s3" open>
-      <summary><span class="num" aria-hidden="true">3</span><span class="ttl"><span class="visually-hidden">Step 3 · </span>Tests</span><span class="hint">Policy and checks to run</span></summary>
-      <div>
-        <div class="row">
+      <section class="panel" id="step-credentials" aria-labelledby="h-credentials">
+        <header class="panel-head">
+          <span class="num" aria-hidden="true">02</span>
+          <div>
+            <p class="kick">Step 2 · Credentials · optional</p>
+            <h2 id="h-credentials">How should it log in?</h2>
+            <p class="help">Only tests that need a session use these. Leave it on “No authentication” to run
+            the checks that work before login.</p>
+          </div>
+        </header>
+        <div class="panel-body">
+          <div class="note"><svg aria-hidden="true"><use href="#i-alert"/></svg>
+            <p>Credentials are sent only with this scan. <strong>Save</strong> stores them as plain text in this browser for this host and port;
+            <strong>Forget</strong> removes them. The server host key isn't pinned yet, so use credentials only on the
+            authorised internal lab network.</p></div>
+          <div class="row">
+            <div><label for="authMethod">Authentication</label>
+              <select id="authMethod">
+                <option value="none">No authentication / username only</option>
+                <option value="password">Username and password</option>
+                <option value="private_key">Private key</option>
+                <option value="certificate">SSH certificate</option>
+                <option value="keyboard_interactive">Keyboard-interactive</option>
+              </select>
+            </div>
+            <div class="credential-field" data-methods="none password private_key certificate keyboard_interactive">
+              <label for="authUsername">Username</label>
+              <input id="authUsername" autocomplete="username" spellcheck="false">
+            </div>
+          </div>
+          <div class="credential-field" data-methods="password">
+            <label for="authPassword">Password</label>
+            <input id="authPassword" type="password" autocomplete="current-password">
+          </div>
+          <div class="credential-field" data-methods="private_key certificate">
+            <label for="authPrivateKey">Private key</label>
+            <textarea id="authPrivateKey" autocomplete="off" spellcheck="false"
+                      placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"></textarea>
+          </div>
+          <div class="credential-field" data-methods="private_key certificate">
+            <label for="authPassphrase">Private-key passphrase (optional)</label>
+            <input id="authPassphrase" type="password" autocomplete="off">
+          </div>
+          <div class="credential-field" data-methods="certificate">
+            <label for="authCertificate">SSH certificate</label>
+            <textarea id="authCertificate" autocomplete="off" spellcheck="false"
+                      placeholder="ssh-ed25519-cert-v01@openssh.com …"></textarea>
+          </div>
+          <div class="credential-field" data-methods="keyboard_interactive">
+            <label for="authResponses">Keyboard-interactive responses</label>
+            <textarea id="authResponses" autocomplete="off" spellcheck="false"
+                      placeholder="One answer per line, in the order the device asks"></textarea>
+          </div>
+          <div class="bar">
+            <button type="button" id="credentialSave"><svg class="ico"><use href="#i-save"/></svg>Save</button>
+            <button type="button" class="sec danger" id="credentialForget"><svg class="ico"><use href="#i-x"/></svg>Forget</button>
+          </div>
+          <div class="muted" id="credentialMsg"></div>
+        </div>
+      </section>
+
+      <section class="panel" id="step-tests" aria-labelledby="h-tests">
+        <header class="panel-head">
+          <span class="num" aria-hidden="true">03</span>
+          <div>
+            <p class="kick">Step 3 · Tests</p>
+            <h2 id="h-tests">What should it check?</h2>
+            <p class="help">The policy sets the thresholds every test is graded against. Medium and
+            high-impact tests start unchecked and only run after you approve them.</p>
+          </div>
+        </header>
+        <div class="panel-body">
           <div>
             <label for="policy">Policy</label>
             <select id="policy"></select>
             <div class="itemmeta muted" id="policyMeta"></div>
             <div class="tools" data-kind="policies">
-              <button class="sec small" data-act="download">Download</button>
-              <button class="sec small" data-act="example">Download example</button>
-              <button class="sec small" data-act="upload">Upload…</button>
-              <button class="sec small danger" data-act="delete" hidden>Delete</button>
+              <button class="sec small" data-act="download"><svg class="ico"><use href="#i-download"/></svg>Download</button>
+              <button class="sec small" data-act="example"><svg class="ico"><use href="#i-file"/></svg>Download example</button>
+              <button class="sec small" data-act="upload"><svg class="ico"><use href="#i-upload"/></svg>Upload…</button>
+              <button class="sec small danger" data-act="delete" hidden><svg class="ico"><use href="#i-trash"/></svg>Delete</button>
               <input type="file" accept=".yaml,.yml" hidden>
             </div>
             <div class="muted" id="policyMsg"></div>
           </div>
+          <div class="bar">
+            <label class="check"><input type="checkbox" id="selall"> Select all</label>
+            <label class="check risk"><input type="checkbox" id="confirmImpact">
+              I approve medium/high-impact tests</label>
+          </div>
+          <div class="tests" id="tests"></div>
         </div>
-        <div class="bar">
-          <label class="check"><input type="checkbox" id="selall"> Select all</label>
-          <label class="check"><input type="checkbox" id="confirmImpact">
-            I approve medium/high-impact tests</label>
-        </div>
-        <div class="tests" id="tests"></div>
-      </div>
-    </details>
+      </section>
 
-    <details class="step s4" open>
-      <summary><span class="num" aria-hidden="true">4</span><span class="ttl"><span class="visually-hidden">Step 4 · </span>Run and results</span><span class="hint">Scan, export and compare with a previous export</span></summary>
-      <div>
-        <div class="bar">
-          <button id="run">Run scan</button>
-          <button class="sec" id="exportJson" disabled>Export JSON</button>
-          <button class="sec" id="exportHtml" disabled>Export HTML</button>
-          <button class="sec" id="exportCsv" disabled>Export CSV</button>
-          <button class="sec danger" id="clearResults" disabled>Clear results</button>
-        </div>
-        <div id="status" class="muted"></div>
-        <div id="log" hidden></div>
-        <div id="results"></div>
-        <hr class="sep">
-        <h3 class="sub">Compare with an export</h3>
-        <p class="muted">Load a JSON exported earlier and it is compared with the current scan.</p>
-        <div class="bar">
-          <input type="file" id="cmpFile" accept="application/json">
-          <button class="sec" id="cmpBtn" disabled>Compare</button>
-        </div>
-        <div id="compare"></div>
-      </div>
-    </details>
+      <section class="panel" id="step-run" aria-labelledby="h-run">
+        <header class="panel-head">
+          <span class="num" aria-hidden="true">04</span>
+          <div>
+            <p class="kick">Step 4 · Run and results</p>
+            <h2 id="h-run">Run the scan</h2>
+            <p class="help">Progress streams in live. Results stay in this browser tab until you clear them;
+            export them to share or to keep as a baseline.</p>
+          </div>
+        </header>
+        <div class="panel-body">
+          <div class="bar">
+            <button class="big" id="run"><svg class="ico"><use href="#i-play"/></svg>Run scan</button>
+            <span class="spacer"></span>
+            <button class="sec" id="exportJson" disabled><svg class="ico"><use href="#i-download"/></svg>JSON</button>
+            <button class="sec" id="exportHtml" disabled><svg class="ico"><use href="#i-download"/></svg>HTML</button>
+            <button class="sec" id="exportCsv" disabled><svg class="ico"><use href="#i-download"/></svg>CSV</button>
+            <button class="sec danger" id="clearResults" disabled><svg class="ico"><use href="#i-trash"/></svg>Clear results</button>
+          </div>
+          <div id="status" class="muted" role="status"></div>
+          <div id="log" hidden></div>
+          <div id="results"></div>
 
-    <details class="step s5" open>
-      <summary><span class="num" aria-hidden="true">5</span><span class="ttl"><span class="visually-hidden">Step 5 · </span>Compare two devices</span><span class="hint">Scan A and B now and diff them</span></summary>
-      <div>
-        <p class="muted">Scans both devices now, with the profile, policy and tests chosen
-        above, and compares device B against device A.</p>
-        <div class="row">
-          <div><label for="hostA">Device A — IP or FQDN</label>
-            <input id="hostA" placeholder="empty = the Step 1 target"></div>
-          <div><label for="hostB">Device B — IP or FQDN</label>
-            <input id="hostB" placeholder="10.0.0.6"></div>
+          <hr class="sep">
+          <h3 class="sub"><svg class="ico" aria-hidden="true"><use href="#i-compare"/></svg>What changed since last time?</h3>
+          <p class="muted">Load a JSON export from an earlier scan; it is compared with the current results.</p>
+          <div class="bar">
+            <input type="file" id="cmpFile" accept="application/json" aria-label="Earlier JSON export">
+            <button class="sec" id="cmpBtn" disabled><svg class="ico"><use href="#i-compare"/></svg>Compare</button>
+          </div>
+          <div id="compare"></div>
         </div>
-        <div class="row">
-          <div><label for="portA">Device A — SSH port</label>
-            <input id="portA" type="number" min="1" max="65535" placeholder="empty = the Step 1 port"></div>
-          <div><label for="portB">Device B — SSH port</label>
-            <input id="portB" type="number" min="1" max="65535" value="22"></div>
+      </section>
+
+      <section class="panel" id="step-devices" aria-labelledby="h-devices">
+        <header class="panel-head">
+          <span class="num" aria-hidden="true">05</span>
+          <div>
+            <p class="kick">Step 5 · Compare two devices</p>
+            <h2 id="h-devices">Is device B as hardened as device A?</h2>
+            <p class="help">Scans both devices now, with the profile, policy and tests chosen above, and
+            reports every difference of B against A.</p>
+          </div>
+        </header>
+        <div class="panel-body">
+          <div class="row">
+            <div><label for="hostA">Device A — IP or FQDN</label>
+              <input id="hostA" placeholder="Empty = the Step 1 target" spellcheck="false"></div>
+            <div><label for="hostB">Device B — IP or FQDN</label>
+              <input id="hostB" placeholder="10.0.0.6" spellcheck="false"></div>
+          </div>
+          <div class="row">
+            <div><label for="portA">Device A — SSH port</label>
+              <input id="portA" type="number" min="1" max="65535" placeholder="Empty = the Step 1 port"></div>
+            <div><label for="portB">Device B — SSH port</label>
+              <input id="portB" type="number" min="1" max="65535" value="22"></div>
+          </div>
+          <div class="bar">
+            <button class="big" id="liveRun"><svg class="ico"><use href="#i-compare"/></svg>Scan both and compare</button>
+            <span class="spacer"></span>
+            <button class="sec" id="liveExportA" disabled><svg class="ico"><use href="#i-download"/></svg>Export A (JSON)</button>
+            <button class="sec" id="liveExportB" disabled><svg class="ico"><use href="#i-download"/></svg>Export B (JSON)</button>
+          </div>
+          <div id="liveStatus" class="muted" role="status"></div>
+          <div class="row" id="liveLogs" hidden>
+            <div><div class="logtitle" id="logTitleA"></div><pre id="logA" class="log"></pre></div>
+            <div><div class="logtitle" id="logTitleB"></div><pre id="logB" class="log"></pre></div>
+          </div>
+          <div id="liveCompare"></div>
         </div>
-        <div class="bar">
-          <button id="liveRun">Scan both and compare</button>
-          <button class="sec" id="liveExportA" disabled>Export A (JSON)</button>
-          <button class="sec" id="liveExportB" disabled>Export B (JSON)</button>
-        </div>
-        <div id="liveStatus" class="muted"></div>
-        <div class="row" id="liveLogs" hidden>
-          <div><div class="logtitle" id="logTitleA"></div><pre id="logA" class="log"></pre></div>
-          <div><div class="logtitle" id="logTitleB"></div><pre id="logB" class="log"></pre></div>
-        </div>
-        <div id="liveCompare"></div>
-      </div>
-    </details>
-  </main>
+      </section>
+    </main>
+  </div>
   <script src="/theme.js"></script>
   <script src="/app.js"></script>
+  <script src="/ui.js"></script>
 </body>
 </html>

@@ -25,4 +25,4 @@ python_classes = ["*Tests"]
 include = ["ssh_auditor*"]
 
 [tool.setuptools.package-data]
-ssh_auditor = ["web/static/*", "examples/*.yaml", "mcp/bridge/*.js"]
+ssh_auditor = ["web/static/*", "web/static/fonts/*", "examples/*.yaml", "mcp/bridge/*.js"]

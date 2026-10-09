@@ -496,15 +496,22 @@ async function runLiveCompare() {
 
 function renderResults(sr) {
   const rows = [];
+  const counts = {};
   for (const r of sr.results) {
     for (const f of r.findings) {
+      counts[f.status] = (counts[f.status] || 0) + 1;
       const rec = f.recommendation ? ` — <span class="muted">${esc(f.recommendation)}</span>` : "";
-      rows.push(`<tr><td>${esc(r.category)}</td><td>${esc(r.test_id)}</td>
+      rows.push(`<tr data-st="${esc(f.status)}"><td>${esc(r.category)}</td><td class="tid">${esc(r.test_id)}</td>
         <td><span class="st ${f.status}">${f.status}</span></td>
         <td>${esc(f.summary)}${rec}</td></tr>`);
     }
   }
-  $("results").innerHTML = `<div class="tw"><table><thead><tr><th>Cat.</th><th>Test</th>
+  // Counters per status; PASS, WARN and FAIL always show, the rest only when present.
+  const kpis = ["PASS", "WARN", "FAIL", "ERROR", "INFO", "SKIP"]
+    .filter((s) => counts[s] || ["PASS", "WARN", "FAIL"].includes(s))
+    .map((s) => `<div class="kpi ${s}${counts[s] ? "" : " zero"}"><span class="n">${counts[s] || 0}</span>
+      <span class="l">${s}</span></div>`).join("");
+  $("results").innerHTML = `<div class="kpis">${kpis}</div><div class="tw"><table><thead><tr><th>Cat.</th><th>Test</th>
     <th>Status</th><th>Result</th></tr></thead><tbody>${rows.join("")}</tbody></table></div>`;
 }
 
