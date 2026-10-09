@@ -100,6 +100,8 @@ class MemoryYescryptPlugin:
                     eff = await effective_sshd(run, target)
                     if eff.exit_status == 0 and not eff.truncated:
                         data["maxstartups"] = _parse_maxstartups(eff.stdout)
+                        if data["maxstartups"] is None:
+                            errors["maxstartups"] = "sshd -T returned no MaxStartups line"
                         grace = _grep_one(eff.stdout, "logingracetime")
                         data["logingracetime_s"] = int(grace) if grace.isdigit() else None
                         data["persourcepenalties"] = (
@@ -121,6 +123,9 @@ class MemoryYescryptPlugin:
                             source="host")]
         perf = (policy or {}).get("performance", {})
         cost = perf.get("hash_cost_mib", 16)
+        expected = perf.get("expected_method", "yescrypt")
+        observed = data.get("configured_method", "unknown")
+        errors = data.get("errors", {})
         findings: list[Finding] = []
 
         avail = data.get("mem_available_mib")
@@ -150,30 +155,47 @@ class MemoryYescryptPlugin:
                 summary=f"~{slots} concurrent yescrypt hashes fit in MemAvailable "
                         f"({avail} MiB / {cost} MiB); quarter≈{(avail // 4) // cost}, "
                         f"third≈{(avail // 3) // cost}.", source="host"))
-        elif data.get("errors", {}).get("maxstartups"):
+        else:
+            # Never drop the memory verdict silently: say exactly what was missing.
+            missing = []
+            if avail is None:
+                missing.append("MemAvailable" +
+                               (f" ({errors['mem_available']})" if errors.get("mem_available") else ""))
+            if ms is None:
+                missing.append("MaxStartups" +
+                               (f" ({errors['maxstartups']})" if errors.get("maxstartups") else ""))
             findings.append(Finding(
-                id="memory-maxstartups", status=Status.INFO,
-                summary=f"Could not read MaxStartups: {data['errors']['maxstartups']}.",
+                id="pre-auth-memory", status=Status.INFO,
+                summary="Could not compute the pre-auth memory headroom; missing: "
+                        + "; ".join(missing) + ".",
+                recommendation="This check needs /proc/meminfo and sshd -T (root or "
+                               "passwordless sudo) on a Linux device.",
                 source="host"))
 
         login_ms = data.get("login_ms")
         limit = perf.get("login_latency_limit_ms", 1500)
         if login_ms is not None:
+            # A login over the limit blames the yescrypt cost only when yescrypt is what
+            # is configured; on another method the latency reflects that method (and the
+            # end-to-end login includes network and the SSH handshake, not just the hash).
+            if observed not in ("yescrypt", "unknown"):
+                latency_rec = (f"This device uses {observed}; the time is the end-to-end "
+                               "login (network + handshake + auth), not just the password "
+                               "hash.")
+            else:
+                latency_rec = "Review the yescrypt cost (count) for this platform."
             if login_ms > limit:
                 st = Status.FAIL if login_ms > limit * 2 else Status.WARN
                 findings.append(Finding(
                     id="login-latency", status=st,
                     summary=f"Password login took {login_ms} ms (limit {limit} ms).",
-                    recommendation="Review the yescrypt cost (count) for this platform.",
-                    source="host"))
+                    recommendation=latency_rec, source="host"))
             else:
                 findings.append(Finding(
                     id="login-latency", status=Status.PASS,
                     summary=f"Password login took {login_ms} ms (within {limit} ms).",
                     source="host"))
 
-        expected = perf.get("expected_method", "yescrypt")
-        observed = data.get("configured_method", "unknown")
         if observed == "unknown":
             findings.append(Finding(
                 id="hash-method", status=Status.INFO,

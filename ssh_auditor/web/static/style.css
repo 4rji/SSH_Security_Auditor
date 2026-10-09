@@ -93,8 +93,21 @@ button svg, a svg { pointer-events: none; }
                                       border-radius: 0 3px 3px 0; background: var(--acc); }
 .nav a .ico { color: var(--dim); }
 
-.side-foot { margin-top: auto; display: flex; flex-direction: column; gap: .75rem; padding-top: 1rem;
+.side-foot { margin-top: auto; display: flex; flex-direction: column; gap: .6rem; padding-top: 1rem;
              border-top: 1px solid var(--bd-soft); }
+.side-foot .nav-label { margin-top: .25rem; }
+
+/* Page links and the Claude integration read as bordered cards, so they are clearly a
+   different kind of control from the plain numbered workflow steps above them. */
+.pagenav a, .navlink-claude { background: var(--well); border: 1px solid var(--bd-soft);
+  border-radius: 9px; }
+.pagenav a:hover, .navlink-claude:hover { border-color: var(--bd-strong); background: var(--raise); }
+.pagenav a[aria-current="true"] { border-color: var(--acc); background: var(--acc-soft); }
+.pagenav a[aria-current="true"]::before { display: none; }
+.pagenav a .ico, .navlink-claude .ico { color: var(--acc); }
+/* The MCP link is an integration, not a page: give it an accent-tinted card. */
+.navlink-claude { border-color: color-mix(in srgb, var(--acc) 45%, var(--bd));
+  background: color-mix(in srgb, var(--acc) 6%, var(--well)); }
 .side-foot .me { margin: 0; }
 .side-foot .me input { margin-top: .3rem; }
 #themeBtn { width: 100%; justify-content: flex-start; }

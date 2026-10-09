@@ -131,7 +131,10 @@ async def run_scan(
             host=concrete_host, port=req.port, policy=policy, params=req.params,
             emit=lambda m: emit({"type": "log", "msg": m}),
             credentials=req.credentials, profile=profile,
-            connection_sem=sem, connection_limit=limit,
+            # The shared host semaphore is sized to the profile limit (the hard cap
+            # across engineers). The per-run concurrency knob, already validated ≤ limit
+            # in admit, sizes how many connections THIS scan opens at once.
+            connection_sem=sem, connection_limit=(req.concurrency or limit),
         )
         tr = _redact_result(await _run_one(tid, ctx, sem), secrets)
         results.append(tr)

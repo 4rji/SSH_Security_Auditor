@@ -1,3 +1,5 @@
+import pytest
+
 from ssh_auditor.models import Evidence, Status
 from ssh_auditor.plugins.memory import MemoryYescryptPlugin
 
@@ -47,3 +49,67 @@ def test_missing_maxstartups_does_not_crash_or_error():
         _ev(maxstartups=None, errors={"maxstartups": "sshd -T unavailable"}),
         {"performance": PERF}))
     assert "pre-auth-memory" not in f or f["pre-auth-memory"].status != Status.ERROR
+
+
+def test_memory_verdict_is_never_silent_when_data_incomplete():
+    # avail present but MaxStartups unreadable: still emit a memory finding explaining it.
+    f = _by_id(MemoryYescryptPlugin().evaluate(
+        _ev(maxstartups=None, errors={"maxstartups": "sshd -T unavailable: not Linux"}),
+        {"performance": PERF}))
+    assert "pre-auth-memory" in f
+    assert f["pre-auth-memory"].status in (Status.INFO, Status.SKIP)
+
+
+def test_latency_recommendation_does_not_blame_yescrypt_on_other_methods():
+    f = _by_id(MemoryYescryptPlugin().evaluate(
+        _ev(login_ms=6000, configured_method="sha512"), {"performance": PERF}))
+    assert "yescrypt" not in (f["login-latency"].recommendation or "").lower()
+
+
+@pytest.mark.asyncio
+async def test_collect_never_reads_shadow_and_records_missing_maxstartups(monkeypatch):
+    from contextlib import asynccontextmanager
+    from types import SimpleNamespace
+
+    from ssh_auditor.models import AuthMethod, Credentials
+    from ssh_auditor.plugins import memory as mem
+    from ssh_auditor.plugins.authentication import CommandResult
+    from ssh_auditor.plugins.base import Context
+
+    issued = []
+
+    @asynccontextmanager
+    async def fake_conn(_ctx):
+        yield object()
+
+    async def fake_run(_connection, command, timeout_s=10.0, max_output_bytes=65536):
+        issued.append(command)
+        if "uname -s" in command:
+            return CommandResult("Linux", "", 0)
+        if "command -v sshd" in command:
+            return CommandResult("/usr/sbin/sshd\n", "", 0)
+        if "stat" in command:
+            return CommandResult("0\t755", "", 0)
+        if " -V" in command:
+            return CommandResult("OpenSSH_9.6", "", 0)
+        if "id -u" in command:
+            return CommandResult("0", "", 0)
+        if "meminfo" in command:
+            return CommandResult("MemAvailable:  1568168 kB", "", 0)
+        if "login.defs" in command:
+            return CommandResult("ENCRYPT_METHOD SHA512", "", 0)
+        if " -T" in command:  # sshd -T without a maxstartups line
+            return CommandResult("logingracetime 120\npermitrootlogin no\n", "", 0)
+        return CommandResult("", "", 127)
+
+    monkeypatch.setattr(mem, "open_authenticated_connection", fake_conn)
+    monkeypatch.setattr(mem, "run_command_on_connection", fake_run)
+    ctx = Context(host="h", port=22, policy={}, params={}, emit=lambda _m: None,
+                  credentials=Credentials(method=AuthMethod.PASSWORD, username="u",
+                                          password="p"),
+                  profile=SimpleNamespace(id="generic"))
+    ev = await mem.MemoryYescryptPlugin().collect(ctx)
+    assert not any("shadow" in c for c in issued)  # hard invariant: never read /etc/shadow
+    assert ev.data["configured_method"] == "sha512"
+    assert ev.data["mem_available_mib"] == 1568168 // 1024
+    assert ev.data["errors"].get("maxstartups")  # sshd -T had no MaxStartups line
